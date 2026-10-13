@@ -1,0 +1,21 @@
+{
+  "dataset_name": "VSL400_SHARED_KEYPOINTS_V1",
+  "samples": 24618,
+  "classes": 400,
+  "signers": 26,
+  "view": "front_view",
+  "n_joints": 108,
+  "coord_dim": 3,
+  "num_source_groups": 5,
+  "num_source_shards": 25,
+  "split_counts": {
+    "train": 19679,
+    "test": 2478,
+    "val": 2461
+  },
+  "split_class_counts": {
+    "test": 400,
+    "train": 400,
+    "val": 400
+  }
+}

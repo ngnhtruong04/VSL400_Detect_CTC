@@ -1,0 +1,21 @@
+{
+  "architecture": "TCN-Transformer-CTC",
+  "seeds": [
+    20260827,
+    20260828,
+    20260829
+  ],
+  "n_seeds": 3,
+  "val_wer_mean": 0.1787989787989788,
+  "val_wer_std": 0.04829888686753156,
+  "val_wer_min": 0.15031635031635032,
+  "val_wer_max": 0.23456543456543458,
+  "val_loss_mean": 1.0905642435669327,
+  "blank_ratio_mean": 0.9849081212465425,
+  "nonempty_ratio_mean": 0.9998666666666667,
+  "mean_pred_tokens_mean": 3.012333333333333,
+  "mean_ref_tokens_mean": 3.003,
+  "test_used": false,
+  "architecture_locked": true,
+  "next_step": "If multi-seed validation is stable, lock the training configuration and run final test once using a predeclared seed/checkpoint policy."
+}

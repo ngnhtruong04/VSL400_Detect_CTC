@@ -1,0 +1,61 @@
+# Runtime Configuration for Realtime VSL Recognition System
+paths:
+  project_root: "."
+  asset_root: "VSL400_System_Assets"
+  checkpoint_path: "VSL400_System_Assets/VSL400_11_MULTISEED_TCN_TRANSFORMER/checkpoints/best_seed_20260827.pt"
+  label_map_path: "VSL400_System_Assets/VSL400_COMBINE_5GROUPS_Shared_Keypoints/label_map.json"
+  extractor_config_path: "VSL400_System_Assets/VSL400_COMBINE_5GROUPS_Shared_Keypoints/extractor_config.json"
+
+model:
+  device: "auto"  # 'cuda', 'cpu', or 'auto'
+  input_dim: 294
+  model_dim: 256
+  tcn_layers: 4
+  tcn_kernel_size: 5
+  nhead: 8
+  transformer_layers: 4
+  ff_dim: 768
+  num_classes: 401
+  blank_id: 400
+  blank_bias_init: -1.5
+
+camera:
+  width: 1280
+  height: 720
+  target_fps: 30
+  mirror_preview: true
+
+preprocessing:
+  pose_visibility_threshold: 0.4
+  pose_presence_threshold: 0.2
+  min_scale: 0.0001
+  shoulder_scale_multiplier: 1.0
+  clip_value: 6.0
+  n_joints: 42
+  features_per_joint: 7
+
+buffer:
+  max_frames: 90
+  min_frames: 15
+  inference_stride: 2
+
+endpoint:
+  enabled: true
+  motion_threshold: 0.015
+  min_sign_duration_ms: 400
+  possible_end_delay_ms: 600
+  silence_ms: 1200
+  cooldown_ms: 500
+
+display:
+  draw_hands: true
+  draw_pose: false
+  show_fps: true
+
+llm:
+  enabled: false
+  provider: "none"  # 'none', 'gemini', 'ollama', 'openai'
+  api_key: ""
+  model_name: "gemini-2.5-flash"
+  endpoint_url: ""
+

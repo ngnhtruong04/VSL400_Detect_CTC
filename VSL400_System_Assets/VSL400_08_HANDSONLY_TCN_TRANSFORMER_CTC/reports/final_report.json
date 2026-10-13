@@ -1,0 +1,50 @@
+{
+  "notebook": "VSL400_08_HandsOnly_TCN_Transformer_CTC",
+  "model": "HandsTCNTransformerCTC",
+  "representation": {
+    "joints": "34:76",
+    "n_joints": 42,
+    "feature_dim_per_joint": 7,
+    "input_shape": "(T,42,7)",
+    "flattened_input_dim": 294
+  },
+  "dataset": {
+    "train_recipes_total": 30000,
+    "val_recipes_total": 5000,
+    "test_used": false
+  },
+  "architecture": {
+    "model_dim": 256,
+    "tcn_layers": 4,
+    "tcn_kernel_size": 5,
+    "nhead": 8,
+    "transformer_layers": 4,
+    "ff_dim": 768,
+    "blank_bias_init": -1.5
+  },
+  "training": {
+    "seed": 20260827,
+    "batch_size": 12,
+    "lr": 0.0005,
+    "weight_decay": 0.0001,
+    "early_stop_patience": 5
+  },
+  "best_training_point": {
+    "global_epoch": 26,
+    "stage": "B_full_1to5",
+    "val_wer": 0.15957375957375958,
+    "val_loss": 1.0441185641649673,
+    "val_blank_ratio": 0.9850034874366804,
+    "val_nonempty_ratio": 0.9996
+  },
+  "full_validation_best_checkpoint": {
+    "wer": 0.15957375957375958,
+    "loss": 1.0441185641649673,
+    "blank_ratio": 0.9850034874366804,
+    "nonempty_ratio": 0.9996,
+    "mean_pred_tokens": 3.0104,
+    "mean_ref_tokens": 3.003
+  },
+  "checkpoint": "checkpoints/best_by_val_wer.pt",
+  "test_used": false
+}

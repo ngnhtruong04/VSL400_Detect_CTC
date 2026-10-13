@@ -1,0 +1,9 @@
+{
+  "selected_architecture": "TCN-Transformer-CTC",
+  "selected_val_wer": 0.15957375957375958,
+  "selected_latency_mean_ms": 5.802739779994681,
+  "selected_params": 5442961,
+  "selection_rule": "Selected by lowest validation WER. Complexity and latency do not override a validation WER gap >= 0.01.",
+  "test_used": false,
+  "next_step": "Run multi-seed training/evaluation for the locked architecture using train/validation only. After multi-seed configuration is locked, run final test once."
+}
