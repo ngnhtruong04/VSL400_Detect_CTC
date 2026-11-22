@@ -154,3 +154,10 @@ export interface AppSettings {
   llmEnabled: boolean;
   llmProvider: "none" | "gemini" | "ollama";
 }
+
+export interface UtteranceHistoryItem {
+  id: string;
+  gloss: string[];
+  sentence: string;
+  timestamp: number;
+}

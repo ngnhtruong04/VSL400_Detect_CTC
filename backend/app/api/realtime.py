@@ -134,10 +134,20 @@ async def _handle_recognition_socket(websocket: WebSocket, mode: str):
                             session.stop_recording()
                             await safe_send_json({"type": "record_ack", "status": "inferring"})
 
+                    elif msg_type == "commit_utterance":
+                        latest_frame_bytes = None
+                        if not is_isolated and hasattr(session, "commit_utterance_async"):
+                            rec_msg = await session.commit_utterance_async()
+                            await safe_send_json(rec_msg.model_dump())
+
                     elif msg_type == "config":
                         sensitivity = payload.get("sensitivity")
                         if not is_isolated and sensitivity and hasattr(session, "update_sensitivity"):
                             session.update_sensitivity(sensitivity)
+                        llm_enabled = payload.get("llm_enabled")
+                        llm_provider = payload.get("llm_provider")
+                        if not is_isolated and (llm_enabled is not None or llm_provider is not None) and hasattr(session, "update_llm_config"):
+                            session.update_llm_config(enabled=llm_enabled, provider=llm_provider)
                         await safe_send_json({"type": "config_ack", "status": "ok"})
 
                     elif msg_type == "ping":

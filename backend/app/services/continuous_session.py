@@ -87,6 +87,7 @@ class ContinuousRecognitionSession:
         # Buffer separation
         self.recent_window: deque = deque(maxlen=recent_window_size)
         self.utterance_buffer: List[np.ndarray] = []
+        self._last_active_buf_len: int = 0
         self.min_utterance_frames = min_utterance_frames
         self.max_utterance_frames = max_utterance_frames
         self.inference_stride = int(inference_stride if inference_stride is not None else settings.INFERENCE_STRIDE)
@@ -110,11 +111,13 @@ class ContinuousRecognitionSession:
         # Diagnostics & FPS
         self.frame_count: int = 0
         self.frame_times: List[float] = []
+        self._current_fps: float = 0.0
         self.last_mediapipe_ms: float = 0.0
         self.last_preprocessing_ms: float = 0.0
         self.last_forward_ms: float = 0.0
         self.last_decode_ms: float = 0.0
         self.endpoint_reason: Optional[str] = None
+        self._last_landmarks_diag: LandmarksDiagnostic = LandmarksDiagnostic()
 
         # Structured logging setup
         self.debug_log_path: Optional[Path] = None
@@ -130,15 +133,115 @@ class ContinuousRecognitionSession:
         if lvl == "low":
             self.fsm.possible_end_delay_sec = 1.6
             self.fsm.silence_sec = 3.2
+            self.fsm.hands_lowered_possible_end_sec = 0.9
+            self.fsm.hands_lowered_commit_sec = 1.8
             self.fsm.motion_threshold = 0.006
         elif lvl == "high":
             self.fsm.possible_end_delay_sec = 0.8
             self.fsm.silence_sec = 1.6
+            self.fsm.hands_lowered_possible_end_sec = 0.45
+            self.fsm.hands_lowered_commit_sec = 0.85
             self.fsm.motion_threshold = 0.012
         else:
             self.fsm.possible_end_delay_sec = settings.POSSIBLE_END_DELAY_MS / 1000.0
             self.fsm.silence_sec = settings.SILENCE_MS / 1000.0
+            self.fsm.hands_lowered_possible_end_sec = 0.65
+            self.fsm.hands_lowered_commit_sec = 1.2
             self.fsm.motion_threshold = settings.MOTION_THRESHOLD
+
+    def update_llm_config(self, enabled: Optional[bool] = None, provider: Optional[str] = None):
+        """Dynamically updates LanguageService settings from the web client."""
+        if enabled is not None:
+            self.language_service.enabled = bool(enabled)
+        if provider is not None:
+            self.language_service.provider = str(provider).lower().strip()
+
+    def _get_trimmed_utterance_array(self) -> Optional[np.ndarray]:
+        """Returns active utterance frames with excessive trailing POSSIBLE_END silence trimmed
+        (preserves up to 10 frames / ~0.33s of endpoint hold matching training parity)."""
+        if len(self.utterance_buffer) < self.min_utterance_frames:
+            return None
+        if self._last_active_buf_len >= self.min_utterance_frames:
+            end_idx = min(len(self.utterance_buffer), self._last_active_buf_len + 10)
+        else:
+            end_idx = len(self.utterance_buffer)
+        return np.stack(self.utterance_buffer[:end_idx], axis=0).astype(np.float32)
+
+    async def commit_utterance_async(self) -> ContinuousRecognitionMessage:
+        """Manually finalizes and translates the active utterance immediately."""
+        loop = asyncio.get_running_loop()
+        now = time.time()
+        self.endpoint_reason = "manual_commit"
+
+        seq_np = self._get_trimmed_utterance_array()
+        if seq_np is not None:
+            (
+                (gloss_sequence, collapsed_tokens, raw_tokens, blank_ratio),
+                forward_ms,
+                decode_ms,
+            ) = await loop.run_in_executor(_inference_executor, self._infer_and_decode_sync, seq_np)
+            self.last_forward_ms = forward_ms
+            self.last_decode_ms = decode_ms
+            self.last_raw_tokens = list(raw_tokens)
+            self.last_collapsed_tokens = list(collapsed_tokens)
+            self.last_blank_ratio = blank_ratio
+            self.final_tokens = list(gloss_sequence) if len(gloss_sequence) > 0 else list(self.live_tokens)
+        else:
+            self.final_tokens = list(self.live_tokens)
+
+        self.final_sentence = await self.language_service.to_natural_sentence(self.final_tokens)
+        logger.info(f"Utterance manually finalized: tokens={self.final_tokens}, sentence='{self.final_sentence}'")
+
+        # Reset active utterance buffer & FSM to IDLE for next continuous sentence
+        self._epoch += 1
+        if self._live_infer_task and not self._live_infer_task.done():
+            self._live_infer_task.cancel()
+        self._live_infer_task = None
+        buf_len = len(self.utterance_buffer)
+        self.utterance_buffer.clear()
+        self._last_active_buf_len = 0
+        self.live_tokens = []
+        self.stable_tokens = []
+        self.token_history_window.clear()
+        self.fsm.reset()
+
+        model_diag = ModelDiagnostic(
+            buffer_frames=buf_len,
+            input_shape=f"(1, {buf_len}, 294)" if buf_len > 0 else "(1, 0, 294)",
+            blank_ratio=round(self.last_blank_ratio, 4),
+            mediapipe_ms=round(self.last_mediapipe_ms, 2),
+            preprocessing_ms=round(self.last_preprocessing_ms, 2),
+            forward_ms=round(self.last_forward_ms, 2),
+            decode_ms=round(self.last_decode_ms, 2),
+            nan_count=self.preprocessor.last_nan_count,
+            inf_count=self.preprocessor.last_inf_count,
+        )
+        cont_payload = ContinuousStatePayload(
+            fsm_state=FSMState.END_OF_UTTERANCE.value,
+            live_tokens=[],
+            stable_tokens=[],
+            final_tokens=self.final_tokens,
+            raw_token_ids=self.last_raw_tokens,
+            collapsed_token_ids=self.last_collapsed_tokens,
+            utterance_frames=buf_len,
+            recent_frames=len(self.recent_window),
+            endpoint_reason=self.endpoint_reason,
+            final_sentence=self.final_sentence,
+        )
+        return ContinuousRecognitionMessage(
+            type="continuous_recognition",
+            mode="continuous",
+            timestamp=now,
+            session_id=self.session_id,
+            state=FSMState.END_OF_UTTERANCE.value,
+            fps=self._current_fps,
+            total_ms=round(self.last_forward_ms + self.last_decode_ms, 2),
+            motion_energy=0.0,
+            live_gloss=[],
+            landmarks=self._last_landmarks_diag,
+            model=model_diag,
+            continuous=cont_payload,
+        )
 
     def reset(self):
         """Resets all session state, buffers, and FSM."""
@@ -149,6 +252,7 @@ class ContinuousRecognitionSession:
         self.preprocessor.reset_state()
         self.recent_window.clear()
         self.utterance_buffer.clear()
+        self._last_active_buf_len = 0
         self.fsm.reset()
         self.live_tokens = []
         self.stable_tokens = []
@@ -236,6 +340,7 @@ class ContinuousRecognitionSession:
             self.frame_times.pop(0)
         elapsed = self.frame_times[-1] - self.frame_times[0] if len(self.frame_times) > 1 else 0.0
         fps = round((len(self.frame_times) - 1) / elapsed, 1) if elapsed > 1e-4 else 0.0
+        self._current_fps = fps
 
         # Handle explicit client reset
         if client_action == "reset":
@@ -284,6 +389,7 @@ class ContinuousRecognitionSession:
             self._epoch += 1
             pre_roll = list(self.recent_window)[-6:]
             self.utterance_buffer = list(pre_roll)
+            self._last_active_buf_len = len(self.utterance_buffer)
             self.live_tokens = []
             self.stable_tokens = []
             self.token_history_window.clear()
@@ -294,12 +400,15 @@ class ContinuousRecognitionSession:
         elif current_state in [FSMState.STARTING, FSMState.SIGNING, FSMState.POSSIBLE_END]:
             if len(self.utterance_buffer) < self.max_utterance_frames:
                 self.utterance_buffer.append(frame_features)
+            if current_state in [FSMState.STARTING, FSMState.SIGNING]:
+                self._last_active_buf_len = len(self.utterance_buffer)
 
         elif current_state == FSMState.IDLE:
             if prev_fsm_state == FSMState.COOLDOWN:
                 self.utterance_buffer.clear()
+                self._last_active_buf_len = 0
 
-        # 5. Full Active Utterance Inference (Non-Blocking Background Task!)
+        # 5. Full Active Utterance Inference (Non-Blocking Background Task, trimmed of trailing silence)
         should_run_inference = (
             current_state in [FSMState.SIGNING, FSMState.POSSIBLE_END]
             and len(self.utterance_buffer) >= self.min_utterance_frames
@@ -308,16 +417,17 @@ class ContinuousRecognitionSession:
         )
 
         if should_run_inference:
-            seq_np = np.stack(self.utterance_buffer, axis=0).astype(np.float32)
-            self._live_infer_task = asyncio.create_task(
-                self._run_live_inference_bg(seq_np, self._epoch)
-            )
+            seq_np = self._get_trimmed_utterance_array()
+            if seq_np is not None:
+                self._live_infer_task = asyncio.create_task(
+                    self._run_live_inference_bg(seq_np, self._epoch)
+                )
 
-        # 6. Final Utterance Commitment
+        # 6. Final Utterance Commitment (uses trimmed active utterance — drops excess POSSIBLE_END silence)
         if is_final_commit:
             self.endpoint_reason = "silence_timeout_reached"
-            if len(self.utterance_buffer) >= self.min_utterance_frames:
-                seq_np = np.stack(self.utterance_buffer, axis=0).astype(np.float32)
+            seq_np = self._get_trimmed_utterance_array()
+            if seq_np is not None:
                 (
                     (gloss_sequence, collapsed_tokens, raw_tokens, blank_ratio),
                     forward_ms,
@@ -373,6 +483,7 @@ class ContinuousRecognitionSession:
             right_hand=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in right_hand] if right_hand else None,
             pose=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in pose] if pose else None,
         )
+        self._last_landmarks_diag = landmarks_diag
 
         model_diag = ModelDiagnostic(
             buffer_frames=len(self.utterance_buffer),

@@ -11,6 +11,7 @@ import {
   ContinuousRecognitionMessage,
   RecognitionMessage,
   UtteranceCompleteMessage,
+  UtteranceHistoryItem,
 } from '../types';
 
 interface UseRecognitionSocketProps {
@@ -44,7 +45,10 @@ export function useRecognitionSocket({
   const [stableTokens, setStableTokens] = useState<string[]>([]);
   const [finalGloss, setFinalGloss] = useState<string[]>([]);
   const [finalSentence, setFinalSentence] = useState<string>('');
+  const [utteranceHistory, setUtteranceHistory] = useState<UtteranceHistoryItem[]>([]);
   const [endpointReason, setEndpointReason] = useState<string | null>(null);
+  const prevFsmStateRef = useRef<FSMStatus>('IDLE');
+  const lastCommitSigRef = useRef<string>('');
 
   // Shared diagnostics & tokens
   const [rawTokens, setRawTokens] = useState<number[]>([]);
@@ -222,6 +226,8 @@ export function useRecognitionSocket({
             } else if (data.type === 'continuous_recognition') {
               const msg = data as ContinuousRecognitionMessage;
 
+              const prevState = prevFsmStateRef.current;
+              prevFsmStateRef.current = msg.state;
               setFsmState((prev) => (prev === msg.state ? prev : msg.state));
 
               const nextLive = msg.continuous.live_tokens || [];
@@ -230,14 +236,36 @@ export function useRecognitionSocket({
               const nextStable = msg.continuous.stable_tokens || [];
               setStableTokens((prev) => (arraysEqual(prev, nextStable) ? prev : nextStable));
 
-              if (msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
-                const nextFinal = msg.continuous.final_tokens;
-                setFinalGloss((prev) => (arraysEqual(prev, nextFinal) ? prev : nextFinal));
-              }
-              if (msg.continuous.final_sentence) {
-                setFinalSentence((prev) =>
-                  prev === msg.continuous.final_sentence ? prev : msg.continuous.final_sentence
-                );
+              const isCommitEvent =
+                msg.state === 'END_OF_UTTERANCE' &&
+                (prevState !== 'END_OF_UTTERANCE' || msg.continuous.endpoint_reason === 'manual_commit');
+
+              if (isCommitEvent && msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
+                const committedTokens = msg.continuous.final_tokens;
+                const committedSentence = msg.continuous.final_sentence || committedTokens.join(' ');
+                const sig = `${Math.floor(msg.timestamp * 2)}|${committedTokens.join('|')}`;
+                if (sig !== lastCommitSigRef.current) {
+                  lastCommitSigRef.current = sig;
+                  // Append committed glosses into continuous session timeline (cleared only on Reset)
+                  setFinalGloss((prev) => [...prev, ...committedTokens]);
+                  setFinalSentence(committedSentence);
+                  setUtteranceHistory((prev) => [
+                    {
+                      id: `${Date.now()}-${prev.length}`,
+                      gloss: committedTokens,
+                      sentence: committedSentence,
+                      timestamp: Date.now(),
+                    },
+                    ...prev.slice(0, 9),
+                  ]);
+                }
+              } else if (msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
+                const fallbackTokens = msg.continuous.final_tokens;
+                setFinalGloss((prev) => (prev.length === 0 ? fallbackTokens : prev));
+                if (msg.continuous.final_sentence) {
+                  const fallbackSent = msg.continuous.final_sentence;
+                  setFinalSentence((prev) => (prev ? prev : fallbackSent));
+                }
               }
               const nextReason = msg.continuous.endpoint_reason || null;
               setEndpointReason((prev) => (prev === nextReason ? prev : nextReason));
@@ -397,19 +425,36 @@ export function useRecognitionSocket({
     setIsolatedState('INFERRING');
   }, []);
 
-  // Runtime config update (sensitivity)
-  const sendConfig = useCallback((config: { sensitivity?: 'low' | 'medium' | 'high' }) => {
+  // Mode B Manual Commit (immediately finalize & translate active continuous utterance)
+  const commitUtterance = useCallback(() => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'config', ...config }));
+      ws.send(JSON.stringify({ type: 'commit_utterance' }));
     }
   }, []);
+
+  // Runtime config update (sensitivity + LLM provider)
+  const sendConfig = useCallback(
+    (config: {
+      sensitivity?: 'low' | 'medium' | 'high';
+      llm_enabled?: boolean;
+      llm_provider?: 'none' | 'gemini' | 'ollama';
+    }) => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'config', ...config }));
+      }
+    },
+    []
+  );
 
   // Session reset
   const resetSession = useCallback(() => {
     const ws = wsRef.current;
     pendingRecordAckUntilRef.current = 0;
     inFlightRef.current = false;
+    prevFsmStateRef.current = 'IDLE';
+    lastCommitSigRef.current = '';
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'reset' }));
     }
@@ -418,6 +463,7 @@ export function useRecognitionSocket({
     setStableTokens([]);
     setFinalGloss([]);
     setFinalSentence('');
+    setUtteranceHistory([]);
     setRawTokens([]);
     setCollapsedTokens([]);
     setLandmarks(null);
@@ -441,7 +487,9 @@ export function useRecognitionSocket({
     stableTokens,
     finalGloss,
     finalSentence,
+    utteranceHistory,
     endpointReason,
+    commitUtterance,
     // Common telemetry
     rawTokens,
     collapsedTokens,

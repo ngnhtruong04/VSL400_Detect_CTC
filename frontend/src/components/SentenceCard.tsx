@@ -1,18 +1,36 @@
 import React, { useState } from 'react';
-import { MessageSquare, Copy, Check, Volume2 } from 'lucide-react';
+import { MessageSquare, Copy, Check, Volume2, History } from 'lucide-react';
+import { UtteranceHistoryItem } from '../types';
 
 interface SentenceCardProps {
   sentence: string;
+  liveGloss?: string[];
+  history?: UtteranceHistoryItem[];
 }
 
-export const SentenceCard: React.FC<SentenceCardProps> = ({ sentence }) => {
+export const SentenceCard: React.FC<SentenceCardProps> = ({
+  sentence,
+  liveGloss = [],
+  history = [],
+}) => {
   const [copied, setCopied] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
+  // Full combined transcript across finalized utterances in this session
+  const displaySentence = sentence || (liveGloss.length > 0 ? liveGloss.join(' ') + '...' : '');
+  const fullTranscript =
+    history.length > 1
+      ? [...history]
+          .reverse()
+          .map((h) => h.sentence)
+          .join(' ')
+      : sentence;
+
   const handleCopy = async () => {
-    if (!sentence) return;
+    const textToCopy = fullTranscript || sentence;
+    if (!textToCopy) return;
     try {
-      await navigator.clipboard.writeText(sentence);
+      await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -21,10 +39,11 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({ sentence }) => {
   };
 
   const handleSpeak = () => {
-    if (!sentence || !('speechSynthesis' in window)) return;
+    const textToSpeak = fullTranscript || sentence;
+    if (!textToSpeak || !('speechSynthesis' in window)) return;
 
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(sentence);
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     utterance.lang = 'vi-VN';
     utterance.rate = 0.95;
 
@@ -64,7 +83,7 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({ sentence }) => {
             {/* Copy Button */}
             <button
               onClick={handleCopy}
-              title="Sao chép câu"
+              title="Sao chép toàn bộ câu"
               className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
             >
               {copied ? (
@@ -78,10 +97,14 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({ sentence }) => {
       </div>
 
       {/* Sentence Display Area */}
-      <div className="min-h-[72px] p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/50 to-teal-50/30 border border-emerald-100 flex items-center">
+      <div className="min-h-[72px] p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/50 to-teal-50/30 border border-emerald-100 flex flex-col justify-center space-y-1">
         {sentence ? (
           <p className="text-base sm:text-lg font-semibold text-slate-800 leading-relaxed">
-            "{sentence}"
+            "{fullTranscript}"
+          </p>
+        ) : liveGloss.length > 0 ? (
+          <p className="text-sm sm:text-base font-medium text-sky-700 italic animate-pulse">
+            Đang nhận diện: {displaySentence}
           </p>
         ) : (
           <span className="text-xs text-slate-400 italic">
@@ -89,7 +112,32 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({ sentence }) => {
           </span>
         )}
       </div>
+
+      {/* Utterance History List (when multiple continuous segments have been committed) */}
+      {history.length > 1 && (
+        <div className="pt-2 border-t border-slate-100 space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <History className="w-3.5 h-3.5" />
+            <span>Lịch sử phát ngôn ({history.length})</span>
+          </div>
+          <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+            {history.map((item, idx) => (
+              <div
+                key={item.id}
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-2"
+              >
+                <span className="text-slate-700 font-medium truncate">
+                  <span className="text-slate-400 font-mono mr-1.5">#{history.length - idx}</span>
+                  {item.sentence}
+                </span>
+                <span className="text-[10px] font-mono text-indigo-500 shrink-0">
+                  [{item.gloss.join(' → ')}]
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ArrowRight, Layers, CheckCircle2, Activity, Info } from 'lucide-react';
+import { Sparkles, ArrowRight, Layers, CheckCircle2, Activity, Info, Send } from 'lucide-react';
 import { FSMStatus, ModelDiagnostic, LandmarksDiagnostic } from '../types';
 
 interface RecognitionPanelProps {
@@ -10,6 +10,8 @@ interface RecognitionPanelProps {
   endpointReason?: string | null;
   modelDiagnostic?: ModelDiagnostic | null;
   landmarksDiagnostic?: LandmarksDiagnostic | null;
+  isStreaming?: boolean;
+  onCommitUtterance?: () => void;
 }
 
 export const RecognitionPanel: React.FC<RecognitionPanelProps> = ({
@@ -20,7 +22,11 @@ export const RecognitionPanel: React.FC<RecognitionPanelProps> = ({
   endpointReason,
   modelDiagnostic,
   landmarksDiagnostic,
+  isStreaming = false,
+  onCommitUtterance,
 }) => {
+  const canCommit = isStreaming && (liveGloss.length > 0 || (modelDiagnostic?.buffer_frames || 0) >= 15);
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col space-y-4">
       {/* 1. FSM Lifecycle Context Bar */}
@@ -33,12 +39,31 @@ export const RecognitionPanel: React.FC<RecognitionPanelProps> = ({
           </div>
         </div>
 
-        {endpointReason && (
-          <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <Info className="w-3 h-3 text-indigo-500" />
-            Lý do chốt: {endpointReason}
-          </span>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {onCommitUtterance && (
+            <button
+              type="button"
+              disabled={!canCommit}
+              onClick={onCommitUtterance}
+              title="Chốt chuỗi đang ký và dịch ngay lập tức"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                canCommit
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm cursor-pointer active:scale-95'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Chốt & Dịch</span>
+            </button>
+          )}
+
+          {endpointReason && (
+            <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Info className="w-3 h-3 text-indigo-500" />
+              Lý do chốt: {endpointReason}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 2. Live Recognition Chips (Active utterance) */}

@@ -115,7 +115,7 @@ class HandsTCNTransformerCTC(nn.Module):
                 in_channels=model_dim,
                 out_channels=model_dim,
                 kernel_size=tcn_kernel_size,
-                dilation=2**i,
+                dilation=1,
                 dropout=dropout,
             )
             for i in range(tcn_layers)
@@ -130,7 +130,7 @@ class HandsTCNTransformerCTC(nn.Module):
             nhead=nhead,
             dim_feedforward=ff_dim,
             dropout=dropout,
-            activation="relu",
+            activation="gelu",
             batch_first=True,
             norm_first=True,
         )

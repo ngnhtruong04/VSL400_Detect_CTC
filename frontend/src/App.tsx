@@ -56,7 +56,9 @@ export const App: React.FC = () => {
     stableTokens,
     finalGloss,
     finalSentence,
+    utteranceHistory,
     endpointReason,
+    commitUtterance,
     rawTokens,
     collapsedTokens,
     landmarks,
@@ -72,12 +74,16 @@ export const App: React.FC = () => {
     enabled: isStreaming,
   });
 
-  // Sync sensitivity setting to backend when connected or changed
+  // Sync sensitivity and LLM settings to backend when connected or changed
   useEffect(() => {
     if (isConnected) {
-      sendConfig({ sensitivity: settings.sensitivity });
+      sendConfig({
+        sensitivity: settings.sensitivity,
+        llm_enabled: settings.llmEnabled,
+        llm_provider: settings.llmProvider,
+      });
     }
-  }, [isConnected, settings.sensitivity, sendConfig]);
+  }, [isConnected, settings.sensitivity, settings.llmEnabled, settings.llmProvider, sendConfig]);
 
   const systemStatus: SystemStatus = isConnected
     ? 'ready'
@@ -242,10 +248,14 @@ export const App: React.FC = () => {
                   endpointReason={endpointReason}
                   modelDiagnostic={modelDiagnostic}
                   landmarksDiagnostic={landmarksDiagnostic}
+                  isStreaming={isStreaming}
+                  onCommitUtterance={commitUtterance}
                 />
 
                 <SentenceCard
                   sentence={finalSentence}
+                  liveGloss={liveGloss}
+                  history={utteranceHistory}
                 />
               </>
             )}

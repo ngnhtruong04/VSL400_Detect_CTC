@@ -32,12 +32,16 @@ class EndpointFSM:
         possible_end_delay_ms: int = 600,
         silence_ms: int = 1200,
         cooldown_ms: int = 500,
+        hands_lowered_possible_end_ms: int = 650,
+        hands_lowered_commit_ms: int = 1200,
     ):
         self.motion_threshold = motion_threshold
         self.min_sign_duration_sec = min_sign_duration_ms / 1000.0
         self.possible_end_delay_sec = possible_end_delay_ms / 1000.0
         self.silence_sec = silence_ms / 1000.0
         self.cooldown_sec = cooldown_ms / 1000.0
+        self.hands_lowered_possible_end_sec = hands_lowered_possible_end_ms / 1000.0
+        self.hands_lowered_commit_sec = hands_lowered_commit_ms / 1000.0
 
         self.state: FSMState = FSMState.IDLE
         self.state_entered_time: float = time.time()
@@ -125,7 +129,10 @@ class EndpointFSM:
 
         elif self.state == FSMState.SIGNING:
             time_since_motion = now - self.last_motion_time
-            if time_since_motion >= self.possible_end_delay_sec or (not in_signing_space and time_since_motion >= 0.3):
+            if (
+                time_since_motion >= self.possible_end_delay_sec
+                or (not in_signing_space and time_since_motion >= self.hands_lowered_possible_end_sec)
+            ):
                 self._set_state(FSMState.POSSIBLE_END, now)
 
         elif self.state == FSMState.POSSIBLE_END:
@@ -135,8 +142,11 @@ class EndpointFSM:
                 self._set_state(FSMState.SIGNING, now)
             else:
                 time_since_motion = now - self.last_motion_time
-                # Utterance complete if silent for silence_sec OR hands lowered for >0.5s
-                if time_since_motion >= self.silence_sec or (not in_signing_space and time_since_motion >= 0.5):
+                # Utterance complete if silent for silence_sec OR hands clearly lowered past commit threshold
+                if (
+                    time_since_motion >= self.silence_sec
+                    or (not in_signing_space and time_since_motion >= self.hands_lowered_commit_sec)
+                ):
                     self.last_final_gloss = list(self.current_live_gloss)
                     commit_final = True
                     self._set_state(FSMState.END_OF_UTTERANCE, now)
