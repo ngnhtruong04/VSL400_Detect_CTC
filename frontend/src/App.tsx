@@ -27,7 +27,7 @@ export const App: React.FC = () => {
     mirrorPreview: true,
     showLandmarks: true,
     drawHands: true,
-    drawPose: false,
+    drawPose: true,
     showFps: true,
     sensitivity: 'medium',
     llmEnabled: false,
@@ -60,15 +60,24 @@ export const App: React.FC = () => {
     rawTokens,
     collapsedTokens,
     landmarks,
+    landmarksRef,
     landmarksDiagnostic,
     modelDiagnostic,
     metrics,
     sendFrame,
+    sendConfig,
     resetSession,
   } = useRecognitionSocket({
     mode,
     enabled: isStreaming,
   });
+
+  // Sync sensitivity setting to backend when connected or changed
+  useEffect(() => {
+    if (isConnected) {
+      sendConfig({ sensitivity: settings.sensitivity });
+    }
+  }, [isConnected, settings.sensitivity, sendConfig]);
 
   const systemStatus: SystemStatus = isConnected
     ? 'ready'
@@ -89,25 +98,29 @@ export const App: React.FC = () => {
 
     let animId: number;
     let lastTime = performance.now();
-    const targetInterval = 1000 / 30; // 30 FPS target
+    const targetInterval = 1000 / 30; // Locked 30 FPS capture target
 
     const loop = (currentTime: number) => {
       const delta = currentTime - lastTime;
 
       if (delta >= targetInterval && videoRef.current && videoRef.current.readyState >= 2) {
-        lastTime = currentTime - (delta % targetInterval);
+        lastTime = currentTime - Math.min(delta % targetInterval, targetInterval);
 
         const video = videoRef.current;
         const canvas = captureCanvasRef.current;
 
         if (canvas && video.videoWidth > 0 && video.videoHeight > 0) {
-          // Downscale to 640x360 or 640x480 for responsive streaming without quality loss for landmark detection
-          canvas.width = 640;
-          canvas.height = Math.round((640 * video.videoHeight) / video.videoWidth);
+          // 384px width: ~8KB JPEG, <1.5ms encode, 55-80 FPS MediaPipe CPU throughput
+          const targetW = 384;
+          const targetH = Math.round((targetW * video.videoHeight) / video.videoWidth);
+          if (canvas.width !== targetW || canvas.height !== targetH) {
+            canvas.width = targetW;
+            canvas.height = targetH;
+          }
 
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { alpha: false });
           if (ctx) {
-            // Note: Section 26 Mirror Rule - Draw unmirrored for ML inference
+            // Section 26 Mirror Rule: always send unmirrored frame for ML inference
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             sendFrame(canvas);
           }
@@ -188,7 +201,10 @@ export const App: React.FC = () => {
               fps={metrics.fps}
               fsmState={cameraFsmState}
               landmarks={landmarks}
+              landmarksRef={landmarksRef}
               showLandmarks={settings.showLandmarks}
+              drawHands={settings.drawHands}
+              drawPose={settings.drawPose}
               onToggleLandmarks={() => setSettings((prev) => ({ ...prev, showLandmarks: !prev.showLandmarks }))}
               error={cameraError}
               onStartCamera={handleStart}

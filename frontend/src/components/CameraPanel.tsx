@@ -10,7 +10,10 @@ interface CameraPanelProps {
   fps: number;
   fsmState: FSMStatus;
   landmarks: LandmarksData | null;
+  landmarksRef: React.MutableRefObject<LandmarksData | null>;
   showLandmarks: boolean;
+  drawHands?: boolean;
+  drawPose?: boolean;
   onToggleLandmarks: () => void;
   error: string | null;
   onStartCamera: () => void;
@@ -32,6 +35,43 @@ const HAND_CONNECTIONS = [
   [17, 18], [18, 19], [19, 20],
 ];
 
+/**
+ * Velocity-adaptive smoothing: eliminates micro-jitter when stationary while snapping
+ * instantaneously during fast signing movements (zero rubber-banding).
+ */
+function smoothPoints(
+  prev: NormalizedPoint[] | null,
+  target: NormalizedPoint[] | null | undefined
+): NormalizedPoint[] | null {
+  if (!target || target.length === 0) return null;
+  if (!prev || prev.length !== target.length) {
+    return target.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  }
+
+  // Compute max displacement across joints to adapt responsiveness
+  let maxDist = 0;
+  for (let i = 0; i < target.length; i++) {
+    const dx = target[i].x - prev[i].x;
+    const dy = target[i].y - prev[i].y;
+    const d = Math.hypot(dx, dy);
+    if (d > maxDist) maxDist = d;
+  }
+
+  // Fast movement -> high alpha (near instant snap); micro-jitter -> smooth
+  const alpha = maxDist > 0.045 ? 0.92 : maxDist > 0.015 ? 0.72 : 0.45;
+  const inv = 1 - alpha;
+
+  const out: NormalizedPoint[] = new Array(target.length);
+  for (let i = 0; i < target.length; i++) {
+    out[i] = {
+      x: prev[i].x * inv + target[i].x * alpha,
+      y: prev[i].y * inv + target[i].y * alpha,
+      z: (prev[i].z ?? 0) * inv + (target[i].z ?? 0) * alpha,
+    };
+  }
+  return out;
+}
+
 export const CameraPanel: React.FC<CameraPanelProps> = ({
   videoRef,
   isStreaming,
@@ -40,12 +80,22 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
   fps,
   fsmState,
   landmarks,
+  landmarksRef,
   showLandmarks,
+  drawHands = true,
+  drawPose = true,
   onToggleLandmarks,
   error,
   onStartCamera,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Smoothed skeleton state kept strictly inside ref (never triggers React renders)
+  const smoothedRef = useRef<{
+    left: NormalizedPoint[] | null;
+    right: NormalizedPoint[] | null;
+    pose: NormalizedPoint[] | null;
+  }>({ left: null, right: null, pose: null });
 
   // Map technical FSM states to friendly user terms
   const stateLabels: Record<FSMStatus, { text: string; color: string; dot: string }> = {
@@ -59,141 +109,208 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
 
   const currentLabel = stateLabels[fsmState] || stateLabels.IDLE;
 
-  // Render Skeleton on Canvas Overlay
+  // Dedicated 60 FPS requestAnimationFrame canvas loop (completely decoupled from React renders)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Sync canvas buffer dimensions with video element
-    const video = videoRef.current;
-    if (video && video.videoWidth > 0 && video.videoHeight > 0) {
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-      }
-    }
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!isStreaming || !showLandmarks || !landmarks) {
+    if (!isStreaming || !showLandmarks) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      smoothedRef.current = { left: null, right: null, pose: null };
       return;
     }
 
-    const w = canvas.width;
-    const h = canvas.height;
+    let animId = 0;
 
-    const drawHand = (joints: NormalizedPoint[], strokeColor: string, jointColor: string, tipColor: string) => {
+    const drawHand = (
+      joints: NormalizedPoint[],
+      w: number,
+      h: number,
+      strokeColor: string,
+      jointColor: string,
+      tipColor: string
+    ) => {
       if (!joints || joints.length < 21) return;
 
-      // Draw bones
+      // Batch all bone segments into a single path for fast canvas rasterization
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = strokeColor;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-
+      ctx.beginPath();
       for (const [startIdx, endIdx] of HAND_CONNECTIONS) {
         const p1 = joints[startIdx];
         const p2 = joints[endIdx];
         if (!p1 || !p2) continue;
-
-        ctx.beginPath();
         ctx.moveTo(p1.x * w, p1.y * h);
         ctx.lineTo(p2.x * w, p2.y * h);
-        ctx.stroke();
       }
+      ctx.stroke();
 
-      // Draw joints
+      // Compute bounding box while drawing joints
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#ffffff';
       for (let i = 0; i < joints.length; i++) {
         const pt = joints[i];
         if (!pt) continue;
+        const px = pt.x * w;
+        const py = pt.y * h;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
 
-        const isTip = [4, 8, 12, 16, 20].includes(i);
+        const isTip = i === 4 || i === 8 || i === 12 || i === 16 || i === 20;
         const radius = isTip ? 4.5 : 3.0;
 
         ctx.beginPath();
-        ctx.arc(pt.x * w, pt.y * h, radius, 0, 2 * Math.PI);
+        ctx.arc(px, py, radius, 0, 2 * Math.PI);
         ctx.fillStyle = isTip ? tipColor : jointColor;
         ctx.fill();
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#ffffff';
         ctx.stroke();
+      }
+
+      // Draw bounding box around hand
+      if (minX < maxX && minY < maxY) {
+        const pad = 12;
+        const bx = Math.max(2, minX - pad);
+        const by = Math.max(2, minY - pad);
+        const bw = Math.min(w - 4 - bx, maxX - minX + pad * 2);
+        const bh = Math.min(h - 4 - by, maxY - minY + pad * 2);
+
+        ctx.save();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
+
+        const cornerLen = Math.min(12, bw / 4, bh / 4);
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = tipColor;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        // Top-left
+        ctx.moveTo(bx, by + cornerLen);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(bx + cornerLen, by);
+        // Top-right
+        ctx.moveTo(bx + bw - cornerLen, by);
+        ctx.lineTo(bx + bw, by);
+        ctx.lineTo(bx + bw, by + cornerLen);
+        // Bottom-left
+        ctx.moveTo(bx, by + bh - cornerLen);
+        ctx.lineTo(bx, by + bh);
+        ctx.lineTo(bx + cornerLen, by + bh);
+        // Bottom-right
+        ctx.moveTo(bx + bw - cornerLen, by + bh);
+        ctx.lineTo(bx + bw, by + bh);
+        ctx.lineTo(bx + bw, by + bh - cornerLen);
+        ctx.stroke();
+        ctx.restore();
       }
     };
 
-    // 1. Draw Pose shoulders and arms
-    if (landmarks.pose && landmarks.pose.length > 16) {
-      const p = landmarks.pose;
-      const leftSh = p[11];
-      const rightSh = p[12];
-      const leftElbow = p[13];
-      const rightElbow = p[14];
-      const leftWrist = p[15];
-      const rightWrist = p[16];
-
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(129, 140, 248, 0.8)'; // Indigo/Slate
-      ctx.lineCap = 'round';
-
-      // Shoulder bar
-      if (leftSh && rightSh) {
-        ctx.beginPath();
-        ctx.moveTo(leftSh.x * w, leftSh.y * h);
-        ctx.lineTo(rightSh.x * w, rightSh.y * h);
-        ctx.stroke();
-
-        // Shoulder joint anchors
-        ctx.beginPath();
-        ctx.arc(leftSh.x * w, leftSh.y * h, 5, 0, 2 * Math.PI);
-        ctx.arc(rightSh.x * w, rightSh.y * h, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#6366f1';
-        ctx.fill();
+    const renderFrame = () => {
+      const video = videoRef.current;
+      if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+        // Keep exact video aspect ratio (for object-cover alignment) while capping at 640px for fast rasterization
+        const targetW = Math.min(640, video.videoWidth);
+        const targetH = Math.round((targetW * video.videoHeight) / video.videoWidth);
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+          canvas.width = targetW;
+          canvas.height = targetH;
+        }
       }
 
-      // Left arm
-      if (leftSh && leftElbow && leftWrist) {
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)'; // Green
-        ctx.beginPath();
-        ctx.moveTo(leftSh.x * w, leftSh.y * h);
-        ctx.lineTo(leftElbow.x * w, leftElbow.y * h);
-        ctx.lineTo(leftWrist.x * w, leftWrist.y * h);
-        ctx.stroke();
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const raw = landmarksRef.current;
+      if (raw) {
+        smoothedRef.current.left = smoothPoints(smoothedRef.current.left, raw.left_hand);
+        smoothedRef.current.right = smoothPoints(smoothedRef.current.right, raw.right_hand);
+        smoothedRef.current.pose = smoothPoints(smoothedRef.current.pose, raw.pose);
+
+        const pose = smoothedRef.current.pose;
+        const left = smoothedRef.current.left;
+        const right = smoothedRef.current.right;
+
+        // 1. Draw Pose shoulders and arms
+        if (drawPose && pose && pose.length > 16) {
+          const leftSh = pose[11];
+          const rightSh = pose[12];
+          const leftElbow = pose[13];
+          const rightElbow = pose[14];
+          const leftWrist = pose[15];
+          const rightWrist = pose[16];
+
+          ctx.lineWidth = 3;
+          ctx.lineCap = 'round';
+
+          if (leftSh && rightSh) {
+            ctx.strokeStyle = 'rgba(129, 140, 248, 0.8)';
+            ctx.beginPath();
+            ctx.moveTo(leftSh.x * w, leftSh.y * h);
+            ctx.lineTo(rightSh.x * w, rightSh.y * h);
+            ctx.stroke();
+
+            ctx.fillStyle = '#6366f1';
+            ctx.beginPath();
+            ctx.arc(leftSh.x * w, leftSh.y * h, 5, 0, 2 * Math.PI);
+            ctx.arc(rightSh.x * w, rightSh.y * h, 5, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+
+          if (leftSh && leftElbow && leftWrist) {
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+            ctx.beginPath();
+            ctx.moveTo(leftSh.x * w, leftSh.y * h);
+            ctx.lineTo(leftElbow.x * w, leftElbow.y * h);
+            ctx.lineTo(leftWrist.x * w, leftWrist.y * h);
+            ctx.stroke();
+          }
+
+          if (rightSh && rightElbow && rightWrist) {
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.6)';
+            ctx.beginPath();
+            ctx.moveTo(rightSh.x * w, rightSh.y * h);
+            ctx.lineTo(rightElbow.x * w, rightElbow.y * h);
+            ctx.lineTo(rightWrist.x * w, rightWrist.y * h);
+            ctx.stroke();
+          }
+        }
+
+        // 2. Draw Left Hand (Emerald palette)
+        if (drawHands && left) {
+          drawHand(left, w, h, 'rgba(16, 185, 129, 0.85)', '#10b981', '#34d399');
+        }
+
+        // 3. Draw Right Hand (Sky/Cyan palette)
+        if (drawHands && right) {
+          drawHand(right, w, h, 'rgba(14, 165, 233, 0.85)', '#0284c7', '#38bdf8');
+        }
+      } else {
+        smoothedRef.current = { left: null, right: null, pose: null };
       }
 
-      // Right arm
-      if (rightSh && rightElbow && rightWrist) {
-        ctx.strokeStyle = 'rgba(14, 165, 233, 0.6)'; // Sky
-        ctx.beginPath();
-        ctx.moveTo(rightSh.x * w, rightSh.y * h);
-        ctx.lineTo(rightElbow.x * w, rightElbow.y * h);
-        ctx.lineTo(rightWrist.x * w, rightWrist.y * h);
-        ctx.stroke();
-      }
-    }
+      animId = requestAnimationFrame(renderFrame);
+    };
 
-    // 2. Draw Left Hand (Emerald palette)
-    if (landmarks.left_hand) {
-      drawHand(
-        landmarks.left_hand,
-        'rgba(16, 185, 129, 0.85)',
-        '#10b981',
-        '#34d399'
-      );
-    }
+    animId = requestAnimationFrame(renderFrame);
 
-    // 3. Draw Right Hand (Sky/Cyan dominant palette)
-    if (landmarks.right_hand) {
-      drawHand(
-        landmarks.right_hand,
-        'rgba(14, 165, 233, 0.85)',
-        '#0284c7',
-        '#38bdf8'
-      );
-    }
-  }, [landmarks, isStreaming, showLandmarks]);
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [isStreaming, showLandmarks, drawHands, drawPose, videoRef, landmarksRef]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col h-full">
@@ -284,7 +401,7 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
         <canvas
           ref={canvasRef}
           width={640}
-          height={360}
+          height={480}
           className={`absolute inset-0 w-full h-full object-cover pointer-events-none ${
             mirrorPreview ? '-scale-x-100' : ''
           } ${!isStreaming ? 'hidden' : ''}`}

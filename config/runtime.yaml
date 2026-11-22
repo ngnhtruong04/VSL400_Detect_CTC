@@ -37,15 +37,15 @@ preprocessing:
 buffer:
   max_frames: 90
   min_frames: 15
-  inference_stride: 2
+  inference_stride: 4  # Async live inference every 4 frames (~7-8 updates/sec at 30 FPS) without stalling landmarks
 
 endpoint:
   enabled: true
-  motion_threshold: 0.015
-  min_sign_duration_ms: 400
-  possible_end_delay_ms: 600
-  silence_ms: 1200
-  cooldown_ms: 500
+  motion_threshold: 0.008
+  min_sign_duration_ms: 300
+  possible_end_delay_ms: 1200
+  silence_ms: 2500
+  cooldown_ms: 400
 
 display:
   draw_hands: true

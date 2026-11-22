@@ -1,16 +1,18 @@
 """Isolated Recognition Session (Mode A) for Single-Gloss Recognition.
 
 Flow:
-Webcam -> MediaPipe -> Strict Preprocessing -> Isolated Segment Buffer
--> Detect Signing Interval -> Collect Complete Sign Segment
--> Model Inference on Full Segment -> Single-Gloss Prediction + Top-5 -> Output.
+Webcam -> MediaPipe (off event loop) -> Strict Preprocessing -> Isolated Segment Buffer
+-> Manual or Auto Sign Interval -> Model Inference on Full Segment (in thread pool)
+-> Single-Gloss Prediction + Top-5 -> Output.
 """
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from enum import Enum
 import logging
 import time
 import uuid
-from enum import Enum
-from typing import Dict, List, Optional, Tuple, Any
+from typing import List, Optional, Tuple
 import numpy as np
 import torch
 
@@ -30,6 +32,9 @@ from backend.app.schemas.api_models import (
 
 logger = logging.getLogger("vsl.isolated_session")
 
+# Dedicated single-worker executor for CPU-bound PyTorch inference
+_isolated_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vsl_isolated")
+
 
 class IsolatedState(str, Enum):
     IDLE = "IDLE"
@@ -45,14 +50,15 @@ class IsolatedRecognitionSession:
         self,
         session_id: Optional[str] = None,
         decoder: Optional[CTCDecoder] = None,
-        min_frames: int = 15,
-        max_frames: int = 120,
-        motion_start_threshold: float = 0.015,
+        min_frames: int = 10,
+        max_frames: int = 180,
+        motion_start_threshold: float = 0.025,
         motion_continue_threshold: float = 0.008,
-        pause_timeout_sec: float = 0.55,
+        pause_timeout_sec: float = 1.6,
     ):
         self.session_id = session_id or str(uuid.uuid4())
         self.extractor = LandmarkExtractor()
+        self._mp_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="iso_mp")
         self.preprocessor = VSLPreprocessor(
             pose_visibility_threshold=settings.POSE_VISIBILITY_THRESHOLD,
             pose_presence_threshold=settings.POSE_PRESENCE_THRESHOLD,
@@ -79,11 +85,17 @@ class IsolatedRecognitionSession:
         self.recording_start_time: Optional[float] = None
         self.last_motion_time: Optional[float] = None
         self.last_prediction: Optional[IsolatedPrediction] = None
+        # True when recording was manually triggered by user (never auto-stop on pause/hands lowered)
+        self.manual_recording: bool = False
 
         # Timing & Performance
         self.frame_times: List[float] = []
+        self._current_fps: float = 0.0
+        self.last_mediapipe_ms: float = 0.0
+        self.last_preprocessing_ms: float = 0.0
         self.last_forward_ms: float = 0.0
         self.last_decode_ms: float = 0.0
+        self._last_landmarks_diag: LandmarksDiagnostic = LandmarksDiagnostic()
 
     def reset(self):
         """Clears buffers and returns to IDLE state."""
@@ -95,42 +107,34 @@ class IsolatedRecognitionSession:
         self.last_prediction = None
         self.last_forward_ms = 0.0
         self.last_decode_ms = 0.0
+        self.manual_recording = False
 
     def start_recording(self):
-        """Manually trigger recording for isolated sign."""
+        """Manually trigger recording for isolated sign (manual mode: no auto-stop)."""
         self.state = IsolatedState.RECORDING
         self.frames_buffer.clear()
-        self.recording_start_time = time.time()
-        self.last_motion_time = time.time()
+        now = time.time()
+        self.recording_start_time = now
+        self.last_motion_time = now
         self.last_prediction = None
+        self.manual_recording = True
 
     def stop_recording(self):
         """Manually finish recording and trigger inference."""
         if self.state == IsolatedState.RECORDING:
             self.state = IsolatedState.INFERRING
 
-    def finalize_and_infer(self) -> IsolatedRecognitionMessage:
-        """Forces immediate inference on current buffer and returns message."""
-        self.last_prediction = self.infer_segment(self.frames_buffer)
-        self.state = IsolatedState.RESULT
-
+    def _build_finalize_message(self) -> IsolatedRecognitionMessage:
         model_diag = ModelDiagnostic(
             buffer_frames=len(self.frames_buffer),
             input_shape=f"(1, {len(self.frames_buffer)}, 294)" if len(self.frames_buffer) > 0 else "(1, 0, 294)",
             blank_ratio=self.last_prediction.blank_ratio if self.last_prediction else 0.0,
+            mediapipe_ms=round(self.last_mediapipe_ms, 2),
+            preprocessing_ms=round(self.last_preprocessing_ms, 2),
             forward_ms=round(self.last_forward_ms, 2),
             decode_ms=round(self.last_decode_ms, 2),
             nan_count=self.preprocessor.last_nan_count,
             inf_count=self.preprocessor.last_inf_count,
-        )
-
-        landmarks_diag = LandmarksDiagnostic(
-            left_valid_ratio=round(self.preprocessor.last_left_valid_ratio, 2),
-            right_valid_ratio=round(self.preprocessor.last_right_valid_ratio, 2),
-            overall_valid_ratio=round(self.preprocessor.last_overall_valid_ratio, 2),
-            has_left_hand=self.preprocessor.last_left_valid_ratio > 0.0,
-            has_right_hand=self.preprocessor.last_right_valid_ratio > 0.0,
-            in_signing_space=self.preprocessor.in_signing_space,
         )
 
         return IsolatedRecognitionMessage(
@@ -139,14 +143,34 @@ class IsolatedRecognitionSession:
             timestamp=time.time(),
             session_id=self.session_id,
             state=self.state.value,
-            fps=30.0,
+            fps=self._current_fps,
             total_ms=round(self.last_forward_ms + self.last_decode_ms, 2),
             motion_energy=0.0,
             live_gloss=[self.last_prediction.gloss] if (self.last_prediction and self.last_prediction.gloss) else [],
-            landmarks=landmarks_diag,
+            landmarks=self._last_landmarks_diag,
             model=model_diag,
             prediction=self.last_prediction,
         )
+
+    def finalize_and_infer(self) -> IsolatedRecognitionMessage:
+        """Synchronously forces immediate inference on current buffer and returns message."""
+        self.manual_recording = False
+        self.last_prediction = self.infer_segment(list(self.frames_buffer))
+        self.state = IsolatedState.RESULT
+        return self._build_finalize_message()
+
+    async def finalize_and_infer_async(self) -> IsolatedRecognitionMessage:
+        """Asynchronously runs inference in executor without blocking the WebSocket event loop."""
+        self.manual_recording = False
+        segment_copy = list(self.frames_buffer)
+        loop = asyncio.get_running_loop()
+        self.last_prediction = await loop.run_in_executor(
+            _isolated_executor,
+            self.infer_segment,
+            segment_copy,
+        )
+        self.state = IsolatedState.RESULT
+        return self._build_finalize_message()
 
     def infer_segment(self, segment_features: List[np.ndarray]) -> IsolatedPrediction:
         """Runs full sequence inference on a collected sign segment."""
@@ -206,80 +230,91 @@ class IsolatedRecognitionSession:
             blank_ratio=round(blank_ratio, 4),
         )
 
-    def process_frame(
+    async def process_frame(
         self,
         frame_bgr: np.ndarray,
         client_action: Optional[str] = None,
         draw_landmarks: bool = False,
     ) -> Tuple[IsolatedRecognitionMessage, np.ndarray]:
-        """Processes a single frame in Isolated Mode."""
+        """Processes a single frame in Isolated Mode (async - MediaPipe & PyTorch off event loop)."""
         t_start = time.perf_counter()
         now = time.time()
 
-        # Update FPS tracking
+        # Exact sliding-window FPS tracking
         self.frame_times.append(now)
         if len(self.frame_times) > 30:
             self.frame_times.pop(0)
         elapsed = self.frame_times[-1] - self.frame_times[0] if len(self.frame_times) > 1 else 0.0
-        fps = round(len(self.frame_times) / elapsed, 1) if elapsed > 1e-4 else 0.0
+        fps = round((len(self.frame_times) - 1) / elapsed, 1) if elapsed > 1e-4 else 0.0
+        self._current_fps = fps
 
         # Handle explicit client commands
         if client_action == "reset":
             self.reset()
         elif client_action == "start_record" and self.state in [IsolatedState.IDLE, IsolatedState.RESULT]:
-            self.state = IsolatedState.RECORDING
-            self.frames_buffer.clear()
-            self.recording_start_time = now
-            self.last_motion_time = now
-            self.last_prediction = None
+            self.start_recording()
         elif client_action == "stop_record" and self.state == IsolatedState.RECORDING:
             self.state = IsolatedState.INFERRING
 
-        # 1. Landmark extraction
-        left_hand, right_hand, pose, annotated_frame = self.extractor.extract(
-            frame_bgr, draw_landmarks=draw_landmarks
+        # 1. Landmark extraction (off event loop so WebSocket receiver never stalls)
+        loop = asyncio.get_running_loop()
+        t_mp = time.perf_counter()
+        left_hand, right_hand, pose, annotated_frame = await loop.run_in_executor(
+            self._mp_executor,
+            self.extractor.extract,
+            frame_bgr,
+            draw_landmarks,
         )
+        self.last_mediapipe_ms = (time.perf_counter() - t_mp) * 1000.0
 
         # 2. Strict Preprocessing
+        t_prep = time.perf_counter()
         frame_features, motion_energy = self.preprocessor.process_frame(
             left_hand_lms=left_hand,
             right_hand_lms=right_hand,
             pose_lms=pose,
         )
+        self.last_preprocessing_ms = (time.perf_counter() - t_prep) * 1000.0
 
         # 3. State machine transitions
         if self.state == IsolatedState.IDLE:
-            # Trigger recording when hand enters signing space with active motion
+            # Auto-trigger recording only on clear active motion in signing space
             if self.preprocessor.in_signing_space and motion_energy >= self.motion_start_threshold:
                 self.state = IsolatedState.RECORDING
                 self.frames_buffer = [frame_features]
                 self.recording_start_time = now
                 self.last_motion_time = now
                 self.last_prediction = None
+                self.manual_recording = False
 
         elif self.state == IsolatedState.RECORDING:
             self.frames_buffer.append(frame_features)
             if motion_energy >= self.motion_continue_threshold and self.preprocessor.in_signing_space:
                 self.last_motion_time = now
 
-            # Check completion criteria:
-            # - Minimum duration reached AND hands pause
-            # - OR hands lowered outside signing space
-            # - OR buffer reached maximum length
-            if len(self.frames_buffer) >= self.min_frames:
-                paused = (self.last_motion_time is not None) and ((now - self.last_motion_time) >= self.pause_timeout_sec)
-                hands_lowered = (not self.preprocessor.in_signing_space) and (self.last_motion_time is not None) and ((now - self.last_motion_time) >= 0.35)
-                buffer_full = len(self.frames_buffer) >= self.max_frames
+            buffer_full = len(self.frames_buffer) >= self.max_frames
 
-                if paused or hands_lowered or buffer_full:
+            if self.manual_recording:
+                # Manual mode: ONLY stop when user clicks Stop or buffer reaches max_frames (6s @ 30fps)
+                if buffer_full:
                     self.state = IsolatedState.INFERRING
-            elif len(self.frames_buffer) < self.min_frames:
-                # If motion dropped prematurely before minimum frames, abort back to IDLE
-                if (self.last_motion_time is not None) and ((now - self.last_motion_time) > 1.0):
+            else:
+                # Auto mode: stop on sustained pause, hands lowered, or buffer full
+                if len(self.frames_buffer) >= self.min_frames:
+                    paused = (self.last_motion_time is not None) and ((now - self.last_motion_time) >= self.pause_timeout_sec)
+                    hands_lowered = (not self.preprocessor.in_signing_space) and (self.last_motion_time is not None) and ((now - self.last_motion_time) >= 0.9)
+                    if paused or hands_lowered or buffer_full:
+                        self.state = IsolatedState.INFERRING
+                elif (self.last_motion_time is not None) and ((now - self.last_motion_time) > 2.0):
                     self.reset()
 
         if self.state == IsolatedState.INFERRING:
-            self.last_prediction = self.infer_segment(self.frames_buffer)
+            self.manual_recording = False
+            self.last_prediction = await loop.run_in_executor(
+                _isolated_executor,
+                self.infer_segment,
+                list(self.frames_buffer),
+            )
             self.state = IsolatedState.RESULT
 
         total_ms = (time.perf_counter() - t_start) * 1000.0
@@ -296,11 +331,14 @@ class IsolatedRecognitionSession:
             right_hand=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in right_hand] if right_hand else None,
             pose=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in pose] if pose else None,
         )
+        self._last_landmarks_diag = landmarks_diag
 
         model_diag = ModelDiagnostic(
             buffer_frames=len(self.frames_buffer),
             input_shape=f"(1, {len(self.frames_buffer)}, 294)" if len(self.frames_buffer) > 0 else "(1, 0, 294)",
             blank_ratio=self.last_prediction.blank_ratio if self.last_prediction else 0.0,
+            mediapipe_ms=round(self.last_mediapipe_ms, 2),
+            preprocessing_ms=round(self.last_preprocessing_ms, 2),
             forward_ms=round(self.last_forward_ms, 2),
             decode_ms=round(self.last_decode_ms, 2),
             nan_count=self.preprocessor.last_nan_count,
@@ -326,3 +364,4 @@ class IsolatedRecognitionSession:
 
     def close(self):
         self.extractor.close()
+        self._mp_executor.shutdown(wait=False)

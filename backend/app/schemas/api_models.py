@@ -90,6 +90,8 @@ class ModelDiagnostic(BaseModel):
     buffer_frames: int = 0
     input_shape: str = ""
     blank_ratio: float = 0.0
+    mediapipe_ms: float = 0.0
+    preprocessing_ms: float = 0.0
     forward_ms: float = 0.0
     decode_ms: float = 0.0
     nan_count: int = 0

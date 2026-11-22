@@ -7,25 +7,23 @@ export function useWebcam() {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
-  // Enumerate video devices
+  const refreshDevices = useCallback(async () => {
+    try {
+      const devList = await navigator.mediaDevices.enumerateDevices();
+      const videoDevs = devList.filter((d) => d.kind === 'videoinput');
+      setDevices(videoDevs);
+      setSelectedDeviceId((prev) => prev || (videoDevs.length > 0 ? videoDevs[0].deviceId : ''));
+    } catch (err: any) {
+      console.warn('Unable to enumerate camera devices:', err);
+    }
+  }, []);
+
+  // Enumerate video devices once on mount
   useEffect(() => {
-    const getDevices = async () => {
-      try {
-        const devList = await navigator.mediaDevices.enumerateDevices();
-        const videoDevs = devList.filter((d) => d.kind === 'videoinput');
-        setDevices(videoDevs);
-        if (videoDevs.length > 0 && !selectedDeviceId) {
-          setSelectedDeviceId(videoDevs[0].deviceId);
-        }
-      } catch (err: any) {
-        console.warn('Unable to enumerate camera devices:', err);
-      }
-    };
+    refreshDevices();
+  }, [refreshDevices]);
 
-    getDevices();
-  }, [selectedDeviceId]);
-
-  const startStream = useCallback(async () => {
+  const startStream = useCallback(async (overrideDeviceId?: string) => {
     setError(null);
     try {
       if (videoRef.current && videoRef.current.srcObject) {
@@ -33,17 +31,23 @@ export function useWebcam() {
         oldStream.getTracks().forEach((t) => t.stop());
       }
 
+      const targetDeviceId = overrideDeviceId !== undefined ? overrideDeviceId : selectedDeviceId;
+
+      // 640x480 @ 30fps keeps laptop webcams locked at true 30 FPS (720p often drops to 15 FPS in indoor light)
       const constraints: MediaStreamConstraints = {
         video: {
-          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 },
+          deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30, min: 24 },
         },
         audio: false,
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Re-enumerate after permission granted so camera labels populate
+      refreshDevices();
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
@@ -62,7 +66,7 @@ export function useWebcam() {
       }
       setIsStreaming(false);
     }
-  }, [selectedDeviceId]);
+  }, [selectedDeviceId, refreshDevices]);
 
   const stopStream = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -73,15 +77,24 @@ export function useWebcam() {
     setIsStreaming(false);
   }, []);
 
+  const handleSelectDevice = useCallback(
+    (deviceId: string) => {
+      setSelectedDeviceId(deviceId);
+      if (isStreaming) {
+        startStream(deviceId);
+      }
+    },
+    [isStreaming, startStream]
+  );
+
   return {
     videoRef,
     isStreaming,
     devices,
     selectedDeviceId,
-    setSelectedDeviceId,
+    setSelectedDeviceId: handleSelectDevice,
     startStream,
     stopStream,
     error,
   };
 }
-

@@ -72,6 +72,8 @@ export interface ModelDiagnostic {
   buffer_frames: number;
   input_shape: string;
   blank_ratio: number;
+  mediapipe_ms?: number;
+  preprocessing_ms?: number;
   forward_ms: number;
   decode_ms: number;
   nan_count: number;

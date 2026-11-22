@@ -19,6 +19,14 @@ interface UseRecognitionSocketProps {
   enabled?: boolean;
 }
 
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export function useRecognitionSocket({
   serverBaseUrl = `ws://${window.location.hostname || 'localhost'}:8000/ws/recognition`,
   mode = 'continuous',
@@ -56,8 +64,21 @@ export function useRecognitionSocket({
     buffer_frames: 0,
   });
 
+  // High-frequency landmark ref for zero-latency 60 FPS canvas rendering (bypasses React reconciler)
+  const landmarksRef = useRef<LandmarksData | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
-  const isSendingFrameRef = useRef<boolean>(false);
+  const isEncodingRef = useRef<boolean>(false);
+  // Strict in-flight flow control: prevents WebSocket frame backlog & hand-tracking lag
+  const inFlightRef = useRef<boolean>(false);
+  const lastSentAtRef = useRef<number>(0);
+
+  // Guard against stale pre-record frames overwriting RECORDING right after clicking Start Record
+  const pendingRecordAckUntilRef = useRef<number>(0);
+
+  // Throttle heavy HUD/metrics React updates to ~10 Hz while landmarks draw at full 30-60 FPS
+  const lastHudUpdateRef = useRef<number>(0);
+  const lastHandFlagsRef = useRef<{ l: boolean; r: boolean; s: boolean }>({ l: false, r: false, s: false });
 
   // Connect WebSocket when enabled or mode changes
   useEffect(() => {
@@ -66,12 +87,15 @@ export function useRecognitionSocket({
         wsRef.current.close();
         wsRef.current = null;
       }
+      landmarksRef.current = null;
+      inFlightRef.current = false;
+      isEncodingRef.current = false;
       setIsConnected(false);
       return;
     }
 
     let isUnmounted = false;
-    let reconnectTimeout: any = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const fullUrl = `${serverBaseUrl}?mode=${mode}`;
 
@@ -82,37 +106,75 @@ export function useRecognitionSocket({
         wsRef.current = ws;
 
         ws.onopen = () => {
-          if (isUnmounted) return;
+          if (isUnmounted) {
+            ws.close();
+            return;
+          }
+          inFlightRef.current = false;
+          isEncodingRef.current = false;
           setIsConnected(true);
         };
 
         ws.onclose = () => {
           if (isUnmounted) return;
+          inFlightRef.current = false;
+          isEncodingRef.current = false;
           setIsConnected(false);
-          reconnectTimeout = setTimeout(connect, 2000);
+          reconnectTimeout = setTimeout(connect, 1500);
         };
 
         ws.onerror = (err) => {
           console.warn('WebSocket error:', err);
-          ws.close();
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+          }
         };
 
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
+            const nowMs = performance.now();
+
+            if (data.type === 'record_ack') {
+              if (data.status === 'recording') {
+                pendingRecordAckUntilRef.current = 0;
+                setIsolatedState('RECORDING');
+              }
+              return;
+            }
+
+            if (data.type === 'reset_ack' || data.type === 'config_ack' || data.type === 'pong') {
+              return;
+            }
+
+            // Server finished processing a frame -> release in-flight gate immediately
+            inFlightRef.current = false;
+
+            const shouldUpdateHud = nowMs - lastHudUpdateRef.current >= 100;
 
             if (data.type === 'isolated_recognition') {
               const msg = data as IsolatedRecognitionMessage;
-              setIsolatedState(msg.state);
+
+              // Ignore stale pre-record frames while waiting for backend start_record ack
+              const awaitingRecordAck = pendingRecordAckUntilRef.current > nowMs;
+              if (!awaitingRecordAck || msg.state === 'RECORDING') {
+                if (msg.state === 'RECORDING') {
+                  pendingRecordAckUntilRef.current = 0;
+                }
+                setIsolatedState((prev) => (prev === msg.state ? prev : msg.state));
+              }
+
               if (msg.prediction) {
                 setIsolatedPrediction(msg.prediction);
                 if (msg.prediction.gloss) {
-                  setLiveGloss([msg.prediction.gloss]);
+                  setLiveGloss((prev) =>
+                    prev.length === 1 && prev[0] === msg.prediction!.gloss ? prev : [msg.prediction!.gloss]
+                  );
                 }
               }
+
               if (msg.landmarks) {
-                setLandmarksDiagnostic(msg.landmarks);
-                setLandmarks({
+                const lmData: LandmarksData = {
                   left_hand: msg.landmarks.left_hand,
                   right_hand: msg.landmarks.right_hand,
                   pose: msg.landmarks.pose,
@@ -122,39 +184,66 @@ export function useRecognitionSocket({
                   left_valid_ratio: msg.landmarks.left_valid_ratio,
                   right_valid_ratio: msg.landmarks.right_valid_ratio,
                   overall_valid_ratio: msg.landmarks.overall_valid_ratio,
-                });
+                };
+                // Immediate zero-latency update for 60 FPS canvas renderer
+                landmarksRef.current = lmData;
+
+                const flagsChanged =
+                  lastHandFlagsRef.current.l !== lmData.has_left_hand ||
+                  lastHandFlagsRef.current.r !== lmData.has_right_hand ||
+                  lastHandFlagsRef.current.s !== lmData.in_signing_space;
+
+                if (flagsChanged || shouldUpdateHud) {
+                  lastHandFlagsRef.current = {
+                    l: lmData.has_left_hand,
+                    r: lmData.has_right_hand,
+                    s: lmData.in_signing_space,
+                  };
+                  setLandmarks(lmData);
+                  setLandmarksDiagnostic(msg.landmarks);
+                }
               }
-              if (msg.model) {
+
+              if (msg.model && shouldUpdateHud) {
+                lastHudUpdateRef.current = nowMs;
                 setModelDiagnostic(msg.model);
-                setMetrics((prev) => ({
-                  ...prev,
+                setMetrics({
                   fps: msg.fps,
-                  total_ms: msg.total_ms,
+                  mediapipe_ms: msg.model.mediapipe_ms ?? 0,
+                  preprocessing_ms: msg.model.preprocessing_ms ?? 0,
                   inference_ms: msg.model.forward_ms,
                   decode_ms: msg.model.decode_ms,
+                  total_ms: msg.total_ms,
                   motion_energy: msg.motion_energy,
                   blank_ratio: msg.model.blank_ratio,
                   buffer_frames: msg.model.buffer_frames,
-                }));
+                });
               }
             } else if (data.type === 'continuous_recognition') {
               const msg = data as ContinuousRecognitionMessage;
-              setFsmState(msg.state);
-              setLiveGloss(msg.continuous.live_tokens || []);
-              setStableTokens(msg.continuous.stable_tokens || []);
+
+              setFsmState((prev) => (prev === msg.state ? prev : msg.state));
+
+              const nextLive = msg.continuous.live_tokens || [];
+              setLiveGloss((prev) => (arraysEqual(prev, nextLive) ? prev : nextLive));
+
+              const nextStable = msg.continuous.stable_tokens || [];
+              setStableTokens((prev) => (arraysEqual(prev, nextStable) ? prev : nextStable));
+
               if (msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
-                setFinalGloss(msg.continuous.final_tokens);
+                const nextFinal = msg.continuous.final_tokens;
+                setFinalGloss((prev) => (arraysEqual(prev, nextFinal) ? prev : nextFinal));
               }
               if (msg.continuous.final_sentence) {
-                setFinalSentence(msg.continuous.final_sentence);
+                setFinalSentence((prev) =>
+                  prev === msg.continuous.final_sentence ? prev : msg.continuous.final_sentence
+                );
               }
-              setRawTokens(msg.continuous.raw_token_ids || []);
-              setCollapsedTokens(msg.continuous.collapsed_token_ids || []);
-              setEndpointReason(msg.continuous.endpoint_reason || null);
+              const nextReason = msg.continuous.endpoint_reason || null;
+              setEndpointReason((prev) => (prev === nextReason ? prev : nextReason));
 
               if (msg.landmarks) {
-                setLandmarksDiagnostic(msg.landmarks);
-                setLandmarks({
+                const lmData: LandmarksData = {
                   left_hand: msg.landmarks.left_hand,
                   right_hand: msg.landmarks.right_hand,
                   pose: msg.landmarks.pose,
@@ -164,33 +253,55 @@ export function useRecognitionSocket({
                   left_valid_ratio: msg.landmarks.left_valid_ratio,
                   right_valid_ratio: msg.landmarks.right_valid_ratio,
                   overall_valid_ratio: msg.landmarks.overall_valid_ratio,
-                });
+                };
+                // Immediate zero-latency update for 60 FPS canvas renderer
+                landmarksRef.current = lmData;
+
+                const flagsChanged =
+                  lastHandFlagsRef.current.l !== lmData.has_left_hand ||
+                  lastHandFlagsRef.current.r !== lmData.has_right_hand ||
+                  lastHandFlagsRef.current.s !== lmData.in_signing_space;
+
+                if (flagsChanged || shouldUpdateHud) {
+                  lastHandFlagsRef.current = {
+                    l: lmData.has_left_hand,
+                    r: lmData.has_right_hand,
+                    s: lmData.in_signing_space,
+                  };
+                  setLandmarks(lmData);
+                  setLandmarksDiagnostic(msg.landmarks);
+                }
               }
 
-              if (msg.model) {
+              if (msg.model && shouldUpdateHud) {
+                lastHudUpdateRef.current = nowMs;
+                setRawTokens(msg.continuous.raw_token_ids || []);
+                setCollapsedTokens(msg.continuous.collapsed_token_ids || []);
                 setModelDiagnostic(msg.model);
-                setMetrics((prev) => ({
-                  ...prev,
+                setMetrics({
                   fps: msg.fps,
-                  total_ms: msg.total_ms,
+                  mediapipe_ms: msg.model.mediapipe_ms ?? 0,
+                  preprocessing_ms: msg.model.preprocessing_ms ?? 0,
                   inference_ms: msg.model.forward_ms,
                   decode_ms: msg.model.decode_ms,
+                  total_ms: msg.total_ms,
                   motion_energy: msg.motion_energy,
                   blank_ratio: msg.model.blank_ratio,
                   buffer_frames: msg.continuous.utterance_frames,
-                }));
+                });
               }
             } else if (data.type === 'recognition') {
-              // Backward compatibility
               const msg = data as RecognitionMessage;
               setFsmState(msg.state);
               setLiveGloss(msg.live_gloss || []);
               if (msg.raw_tokens) setRawTokens(msg.raw_tokens);
               if (msg.collapsed_tokens) setCollapsedTokens(msg.collapsed_tokens);
-              if (msg.landmarks !== undefined) setLandmarks(msg.landmarks);
+              if (msg.landmarks !== undefined) {
+                landmarksRef.current = msg.landmarks;
+                setLandmarks(msg.landmarks);
+              }
               if (msg.metrics) setMetrics(msg.metrics);
             } else if (data.type === 'utterance_complete') {
-              // Backward compatibility
               const msg = data as UtteranceCompleteMessage;
               setFsmState(msg.state);
               setFinalGloss(msg.gloss || []);
@@ -202,7 +313,7 @@ export function useRecognitionSocket({
           }
         };
       } catch (err) {
-        reconnectTimeout = setTimeout(connect, 2000);
+        reconnectTimeout = setTimeout(connect, 1500);
       }
     };
 
@@ -213,40 +324,63 @@ export function useRecognitionSocket({
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
+      inFlightRef.current = false;
+      isEncodingRef.current = false;
     };
   }, [serverBaseUrl, mode, enabled]);
 
-  // Fast binary frame sender
+  // Low-latency backpressure-aware binary frame sender (never builds a frame queue)
   const sendFrame = useCallback((canvas: HTMLCanvasElement) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    if (isSendingFrameRef.current) {
+    // Skip if still encoding or socket write buffer is backed up
+    if (isEncodingRef.current || ws.bufferedAmount > 65536) {
       return;
     }
 
-    isSendingFrameRef.current = true;
+    // Strict 1-in-flight flow control with 350ms safety watchdog
+    const now = performance.now();
+    if (inFlightRef.current && now - lastSentAtRef.current < 350) {
+      return;
+    }
+
+    isEncodingRef.current = true;
+    inFlightRef.current = true;
+    lastSentAtRef.current = now;
 
     canvas.toBlob(
       (blob) => {
-        isSendingFrameRef.current = false;
-        if (!blob || !ws || ws.readyState !== WebSocket.OPEN) return;
+        isEncodingRef.current = false;
+        if (!blob || !ws || ws.readyState !== WebSocket.OPEN) {
+          inFlightRef.current = false;
+          return;
+        }
 
-        blob.arrayBuffer().then((buf) => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(buf);
-          }
-        });
+        blob
+          .arrayBuffer()
+          .then((buf) => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(buf);
+            } else {
+              inFlightRef.current = false;
+            }
+          })
+          .catch(() => {
+            inFlightRef.current = false;
+          });
       },
       'image/jpeg',
-      0.75
+      0.6
     );
   }, []);
 
   // Mode A Manual Controls
   const startRecord = useCallback(() => {
     const ws = wsRef.current;
+    pendingRecordAckUntilRef.current = performance.now() + 1000;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'start_record' }));
     }
@@ -256,18 +390,30 @@ export function useRecognitionSocket({
 
   const stopRecord = useCallback(() => {
     const ws = wsRef.current;
+    pendingRecordAckUntilRef.current = 0;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'stop_record' }));
     }
     setIsolatedState('INFERRING');
   }, []);
 
+  // Runtime config update (sensitivity)
+  const sendConfig = useCallback((config: { sensitivity?: 'low' | 'medium' | 'high' }) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'config', ...config }));
+    }
+  }, []);
+
   // Session reset
   const resetSession = useCallback(() => {
     const ws = wsRef.current;
+    pendingRecordAckUntilRef.current = 0;
+    inFlightRef.current = false;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'reset' }));
     }
+    landmarksRef.current = null;
     setLiveGloss([]);
     setStableTokens([]);
     setFinalGloss([]);
@@ -300,10 +446,12 @@ export function useRecognitionSocket({
     rawTokens,
     collapsedTokens,
     landmarks,
+    landmarksRef,
     landmarksDiagnostic,
     modelDiagnostic,
     metrics,
     sendFrame,
+    sendConfig,
     resetSession,
   };
 }

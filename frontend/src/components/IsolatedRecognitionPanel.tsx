@@ -198,11 +198,11 @@ export const IsolatedRecognitionPanel: React.FC<IsolatedRecognitionPanelProps> =
                             className={`h-2 rounded-full transition-all ${
                               c.rank === 1 ? 'bg-sky-500' : 'bg-indigo-400'
                             }`}
-                            style={{ width: `${Math.min(100, Math.max(2, c.diagnostic_confidence))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(2, c.diagnostic_confidence * 100))}%` }}
                           />
                         </div>
-                        <span className="font-mono text-[11px] text-slate-700 w-10">
-                          {c.diagnostic_confidence.toFixed(1)}%
+                        <span className="font-mono text-[11px] text-slate-700 w-12">
+                          {(c.diagnostic_confidence * 100).toFixed(1)}%
                         </span>
                       </div>
                     </td>

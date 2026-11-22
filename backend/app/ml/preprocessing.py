@@ -108,16 +108,20 @@ class VSLPreprocessor:
                 return self.last_center, self.last_scale
             return default_center, default_scale
 
-        left_pt = np.array([left_sh["x"], left_sh["y"], left_sh.get("z", 0.0)], dtype=np.float32)
-        right_pt = np.array([right_sh["x"], right_sh["y"], right_sh.get("z", 0.0)], dtype=np.float32)
+        left_pt = np.array([left_sh["x"], left_sh["y"]], dtype=np.float32)
+        right_pt = np.array([right_sh["x"], right_sh["y"]], dtype=np.float32)
 
         if not np.all(np.isfinite(left_pt)) or not np.all(np.isfinite(right_pt)):
             if self.last_center is not None and self.last_scale is not None:
                 return self.last_center, self.last_scale
             return default_center, default_scale
 
-        center = (left_pt + right_pt) / 2.0
-        dist = float(np.linalg.norm(left_pt[:2] - right_pt[:2]))  # 2D Euclidean distance in image plane
+        # 2D shoulder midpoint for (x, y); keep center_z = 0.0 because MediaPipe Hands z is
+        # already wrist-relative (wrist.z == 0) whereas Pose shoulder.z is hip-centered (~ -0.5).
+        # Subtracting Pose shoulder.z from Hand z creates a bogus +2..+3 Z-shift & noisy wrist dz.
+        mid_xy = (left_pt + right_pt) / 2.0
+        center = np.array([mid_xy[0], mid_xy[1], 0.0], dtype=np.float32)
+        dist = float(np.linalg.norm(left_pt - right_pt))  # 2D Euclidean distance in image plane
         scale = max(dist * self.shoulder_scale_multiplier, self.min_scale)
 
         self.last_center = center
