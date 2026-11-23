@@ -63,7 +63,9 @@ export const IsolatedRecognitionPanel: React.FC<IsolatedRecognitionPanelProps> =
           />
           <span>
             {isRecording
-              ? `Đang ghi cử chỉ (${modelDiagnostic?.buffer_frames || 0} frames)`
+              ? (modelDiagnostic?.buffer_frames || 0) === 0
+                ? 'Chờ đưa tay lên...'
+                : `Đang ghi cử chỉ (${modelDiagnostic?.buffer_frames || 0} frames)`
               : isInferring
               ? 'Đang tính toán...'
               : state === 'RESULT'
@@ -112,7 +114,7 @@ export const IsolatedRecognitionPanel: React.FC<IsolatedRecognitionPanelProps> =
 
       {/* Guide text */}
       <div className="text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-        💡 <b>Cách dùng:</b> Nhấn <i>"Bắt đầu ghi"</i> (hoặc tự động khi tay đưa lên vùng ký hiệu), thực hiện đúng 1 từ ký hiệu trong 1–3 giây, sau đó nhấn <i>"Dừng & Nhận diện"</i> hoặc hạ tay xuống.
+        💡 <b>Cách dùng:</b> Nhấn <i>"Bắt đầu ghi"</i>, đưa tay lên thực hiện 1 từ ký hiệu rồi <b>hạ cả 2 tay xuống khỏi khung hình</b> (không còn khung xương bàn tay, hệ thống tự dừng sau ~0.45s và nhận diện ngay) — hoặc nhấn <i>"Dừng & Nhận diện"</i> thủ công.
       </div>
 
       {/* 3. Primary Prediction Result */}
@@ -129,14 +131,24 @@ export const IsolatedRecognitionPanel: React.FC<IsolatedRecognitionPanelProps> =
           )}
         </div>
 
-        <div className="min-h-[50px] flex items-center">
+        <div className="min-h-[50px] flex flex-col justify-center">
           {prediction && prediction.gloss ? (
-            <div className="text-2xl sm:text-3xl font-black text-sky-950 tracking-wide uppercase">
-              {prediction.gloss}
-            </div>
+            <>
+              <div className="text-2xl sm:text-3xl font-black text-sky-950 tracking-wide uppercase">
+                {prediction.gloss}
+              </div>
+              {prediction.greedy_tokens.length === 0 && (
+                <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-0.5 w-fit">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Không khớp rõ (CTC Blank 100%) — chỉ hiển thị gợi ý Top-1 gần nhất</span>
+                </div>
+              )}
+            </>
           ) : isRecording ? (
             <div className="text-sm font-medium text-rose-600 animate-pulse">
-              Đang ghi cử chỉ... hãy thực hiện từ ký hiệu của bạn
+              {(modelDiagnostic?.buffer_frames || 0) === 0
+                ? 'Đang chờ phát hiện bàn tay... hãy đưa tay lên khung hình để bắt đầu ghi'
+                : 'Đang ghi cử chỉ... hạ cả 2 tay xuống để tự dừng và nhận diện'}
             </div>
           ) : isInferring ? (
             <div className="text-sm font-medium text-amber-600 animate-pulse">

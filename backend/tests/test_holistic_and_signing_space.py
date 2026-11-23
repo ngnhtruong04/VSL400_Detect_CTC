@@ -56,3 +56,27 @@ def test_fsm_signing_space_rejection():
     # Must remain in IDLE!
     assert state == FSMState.IDLE, "Motion outside signing space must not trigger STARTING"
 
+
+def test_pose_unset_presence_still_computes_real_shoulder_anchor():
+    """Verifies LandmarkExtractor defaults unset protobuf `presence` to 1.0 so shoulders are never rejected."""
+    from mediapipe.framework.formats import landmark_pb2
+
+    lm = landmark_pb2.NormalizedLandmark(x=0.4, y=0.5, z=-0.2, visibility=0.98)
+    assert not lm.HasField("presence")
+    assert lm.presence == 0.0  # protobuf default that previously broke shoulder normalization!
+
+    # Emulate LandmarkExtractor extraction rule
+    presence_val = float(lm.presence) if lm.HasField("presence") else 1.0
+    assert presence_val == 1.0
+
+    pose_lms = [{"x": 0.5, "y": 0.5, "z": 0.0, "visibility": 0.98, "presence": presence_val} for _ in range(33)]
+    pose_lms[11] = {"x": 0.35, "y": 0.70, "z": -0.3, "visibility": 0.99, "presence": presence_val}
+    pose_lms[12] = {"x": 0.65, "y": 0.70, "z": -0.3, "visibility": 0.99, "presence": presence_val}
+
+    prep = VSLPreprocessor()
+    center, scale = prep.compute_shoulder_anchor(pose_lms)
+    assert prep.last_center is not None
+    assert prep.last_scale is not None
+    np.testing.assert_allclose(center, np.array([0.50, 0.70, 0.0], dtype=np.float32), atol=1e-5)
+    assert abs(scale - 0.30) < 1e-5
+

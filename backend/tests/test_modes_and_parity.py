@@ -49,6 +49,134 @@ def test_isolated_reset_clears_buffer():
     assert session.last_prediction is None
 
 
+def test_isolated_manual_record_auto_stops_when_hands_disappear(monkeypatch):
+    """Manual Start Record waits for hands, tolerates brief flicker, and auto-stops & trims when both hands disappear."""
+    import asyncio
+    import backend.app.services.isolated_session as iso_mod
+
+    session = IsolatedRecognitionSession(min_frames=10, max_frames=180, hands_absent_stop_sec=0.45)
+
+    pose = [{"x": 0.5, "y": 0.5, "z": 0.0, "visibility": 0.95, "presence": 0.95} for _ in range(33)]
+    pose[11] = {"x": 0.35, "y": 0.4, "z": 0.0, "visibility": 0.95, "presence": 0.95}
+    pose[12] = {"x": 0.65, "y": 0.4, "z": 0.0, "visibility": 0.95, "presence": 0.95}
+
+    def make_hand(step: int):
+        return [{"x": 0.5 + 0.01 * step, "y": 0.45, "z": 0.0} for _ in range(21)]
+
+    fake_now = [1000.0]
+    monkeypatch.setattr(iso_mod.time, "time", lambda: fake_now[0])
+
+    # Current mocked extractor output: (left_hand, right_hand, pose)
+    current_lms = [None, None, pose]
+    monkeypatch.setattr(
+        session.extractor,
+        "extract",
+        lambda frame, draw=False: (current_lms[0], current_lms[1], current_lms[2], frame),
+    )
+
+    dummy_frame = np.zeros((64, 64, 3), dtype=np.uint8)
+
+    async def run_scenario():
+        session.start_recording()
+        assert session.state == IsolatedState.RECORDING
+
+        # 1. Hands not raised yet (user moving off mouse for 1.0s) -> stays RECORDING, 0 buffered frames
+        for _ in range(5):
+            fake_now[0] += 0.2
+            msg, _ = await session.process_frame(dummy_frame)
+            assert msg.state == "RECORDING"
+            assert msg.model.buffer_frames == 0
+
+        # 2. Accidental brief hand flash (3 frames < min_frames=10), then hands disappear > 0.45s -> resets buffer & keeps waiting
+        for i in range(3):
+            fake_now[0] += 0.033
+            current_lms[1] = make_hand(i)
+            msg, _ = await session.process_frame(dummy_frame)
+            assert msg.state == "RECORDING"
+        current_lms[1] = None
+        fake_now[0] += 0.033
+        await session.process_frame(dummy_frame)
+        fake_now[0] += 0.5
+        msg, _ = await session.process_frame(dummy_frame)
+        assert msg.state == "RECORDING"
+        assert msg.model.buffer_frames == 0
+
+        # 3. Actual fast sign: 6 hand frames -> 1 brief flicker frame (0.1s < 0.45s) -> 6 more hand frames = 13 frames total (12 hand frames)
+        for i in range(6):
+            fake_now[0] += 0.033
+            current_lms[1] = make_hand(i)
+            msg, _ = await session.process_frame(dummy_frame)
+            assert msg.state == "RECORDING"
+
+        current_lms[1] = None
+        fake_now[0] += 0.10
+        msg, _ = await session.process_frame(dummy_frame)
+        assert msg.state == "RECORDING", "Brief tracking dropout (< 0.45s) must not prematurely stop recording"
+
+        for i in range(6, 12):
+            fake_now[0] += 0.033
+            current_lms[1] = make_hand(i)
+            msg, _ = await session.process_frame(dummy_frame)
+            assert msg.state == "RECORDING"
+
+        # 4. User lowers both hands (no hand skeleton detected) -> starts debounce timer
+        current_lms[0] = None
+        current_lms[1] = None
+        fake_now[0] += 0.05
+        msg, _ = await session.process_frame(dummy_frame)
+        assert msg.state == "RECORDING"
+
+        # Still under 0.45s -> keeps recording
+        fake_now[0] += 0.30
+        msg, _ = await session.process_frame(dummy_frame)
+        assert msg.state == "RECORDING"
+
+        # Crosses 0.45s without hands -> auto-stops immediately (well before 180 frames!) & trims trailing no-hand frames
+        fake_now[0] += 0.20
+        msg, _ = await session.process_frame(dummy_frame)
+        assert msg.state == "RESULT"
+        assert msg.prediction is not None
+        assert msg.prediction.gloss != ""
+        assert len(msg.prediction.top5) == 5
+        # 6 hand + 1 flicker + 6 hand = 13 frames; trailing 3 no-hand debounce frames were trimmed
+        assert msg.model.buffer_frames == 13
+        # Short 13-frame clip is resampled to min_inference_frames (45) + 2*edge_hold_frames (8) = 53
+        assert msg.model.input_shape == "(1, 53, 294)"
+
+    try:
+        asyncio.run(run_scenario())
+    finally:
+        session.close()
+
+
+def test_isolated_temporal_prepare_preserves_missing_hand_contract():
+    """Short-clip resampling + endpoint_hold must never leak non-zero coords/vel into missing hands."""
+    session = IsolatedRecognitionSession(min_inference_frames=45, edge_hold_frames=4)
+    try:
+        raw_frames = []
+        for t in range(18):
+            mat = np.zeros((42, 7), dtype=np.float32)
+            # Only right hand (21..41) present; left hand (0..20) completely missing
+            mat[21:, 0] = -0.3 + 0.02 * t
+            mat[21:, 1] = 0.2 - 0.01 * t
+            mat[21:, 6] = 1.0
+            raw_frames.append(mat.reshape(294))
+
+        prepared = session._prepare_inference_sequence(raw_frames)
+        assert prepared.shape == (53, 294)  # 45 resampled + 4 start_hold + 4 end_hold
+        p_mat = prepared.reshape(53, 42, 7)
+
+        # Missing left hand stays strictly 0 everywhere
+        assert np.all(p_mat[:, :21, :] == 0.0)
+        # Start-hold frames (0..4) and end-hold frames (-4:) have zero velocity (dxyz == 0)
+        assert np.all(p_mat[:5, :, 3:6] == 0.0)
+        assert np.all(p_mat[-4:, :, 3:6] == 0.0)
+        # Active middle frames have smooth recomputed positive dx on right hand
+        assert np.all(p_mat[6:-5, 21:, 3] > 0.0)
+    finally:
+        session.close()
+
+
 def test_continuous_accepts_same_features_as_isolated():
     iso_session = IsolatedRecognitionSession()
     cont_session = ContinuousRecognitionSession()

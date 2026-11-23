@@ -58,4 +58,21 @@ def test_decode_single_gloss_topk():
     assert top5[0]["rank"] == 1
     assert top5[0]["gloss"] == decoder.id_to_label[42]
     assert top5[0]["diagnostic_confidence"] > top5[1]["diagnostic_confidence"]
+    assert top5[0]["diagnostic_confidence"] > 0.9
+
+
+def test_decode_single_gloss_topk_does_not_inflate_all_blank():
+    """All-blank logits must yield near-zero posterior confidence instead of inflated Top-5 softmax."""
+    decoder = CTCDecoder(label_map_path=settings.LABEL_MAP_PATH, blank_id=400)
+
+    logits = torch.zeros(1, 20, 401)
+    logits[:, :, 400] = 10.0  # overwhelming blank probability
+    logits[:, 10, 48] = 3.0   # slight blip for class 48, still overwhelmingly blank
+
+    top5 = decoder.decode_single_gloss_topk(logits, k=5)
+    assert len(top5) == 5
+    assert top5[0]["label_id"] == 48
+    assert top5[0]["diagnostic_confidence"] < 0.05, (
+        f"Blank-dominated logits should not report inflated confidence, got {top5[0]['diagnostic_confidence']}"
+    )
 

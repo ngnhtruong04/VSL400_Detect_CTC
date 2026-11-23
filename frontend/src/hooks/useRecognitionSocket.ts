@@ -208,7 +208,7 @@ export function useRecognitionSocket({
                 }
               }
 
-              if (msg.model && shouldUpdateHud) {
+              if (msg.model && (shouldUpdateHud || msg.state === 'RESULT' || msg.model.buffer_frames === 0)) {
                 lastHudUpdateRef.current = nowMs;
                 setModelDiagnostic(msg.model);
                 setMetrics({
@@ -414,6 +414,9 @@ export function useRecognitionSocket({
     }
     setIsolatedState('RECORDING');
     setIsolatedPrediction(null);
+    setModelDiagnostic((prev) =>
+      prev ? { ...prev, buffer_frames: 0, input_shape: '(1, 0, 294)' } : prev
+    );
   }, []);
 
   const stopRecord = useCallback(() => {

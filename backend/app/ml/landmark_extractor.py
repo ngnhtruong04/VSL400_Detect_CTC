@@ -4,9 +4,9 @@ Design for 30 FPS CPU performance & VSL400 training parity:
 - Training keypoints (extractor_config.json) were extracted using separate Pose + Hands models.
 - MediaPipe Holistic additionally runs 468-point FaceMesh serially on every frame (completely unused
   by the hands-only HandsTCNTransformerCTC model), cutting CPU FPS in half.
-- Running MediaPipe Hands (model_complexity=0) and Pose (model_complexity=0) in parallel on 2
-  threads (MediaPipe C++/TFLite releases the Python GIL) achieves 55-80 FPS on CPU while preserving
-  exact anatomical hand mapping:
+- Running MediaPipe Hands (model_complexity=1) and Pose (model_complexity=1, pose_stride=2) in
+  parallel on 2 threads (MediaPipe C++/TFLite releases the Python GIL) achieves ~55 FPS on CPU while
+  matching MediaPipe Tasks (hand_landmarker + pose_landmarker_full) training Z/XY parity (< 0.003 MAE):
     - left_hand_lms: 21 joints of the signer's anatomical left hand (joints 0..20)
     - right_hand_lms: 21 joints of the signer's anatomical right hand (joints 21..41)
     - pose_lms: 33 joints including shoulders (11, 12) for body-centric normalization
@@ -66,14 +66,14 @@ class LandmarkExtractor:
         self.hands = mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=2,
-            model_complexity=0,
+            model_complexity=1,
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
         )
 
         self.pose = mp_pose.Pose(
             static_image_mode=False,
-            model_complexity=0,
+            model_complexity=1,
             smooth_landmarks=True,
             enable_segmentation=False,
             min_detection_confidence=min_detection_confidence,
@@ -210,7 +210,9 @@ class LandmarkExtractor:
                         "y": float(lm.y),
                         "z": float(lm.z),
                         "visibility": float(lm.visibility),
-                        "presence": float(getattr(lm, "presence", 1.0)),
+                        # mp.solutions.pose leaves protobuf `presence` unset (HasField == False -> 0.0).
+                        # Default to 1.0 when unset so VSLPreprocessor does not reject valid shoulders!
+                        "presence": float(lm.presence) if lm.HasField("presence") else 1.0,
                     }
                     for lm in pose_res.pose_landmarks.landmark
                 ]

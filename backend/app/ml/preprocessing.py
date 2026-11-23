@@ -98,35 +98,50 @@ class VSLPreprocessor:
         right_pres = right_sh.get("presence", 1.0)
 
         # Check if both shoulders satisfy detection confidence thresholds
-        if (
-            left_vis < self.pose_visibility_threshold
-            or right_vis < self.pose_visibility_threshold
-            or left_pres < self.pose_presence_threshold
-            or right_pres < self.pose_presence_threshold
-        ):
-            if self.last_center is not None and self.last_scale is not None:
-                return self.last_center, self.last_scale
-            return default_center, default_scale
+        shoulders_valid = (
+            left_vis >= self.pose_visibility_threshold
+            and right_vis >= self.pose_visibility_threshold
+            and left_pres >= self.pose_presence_threshold
+            and right_pres >= self.pose_presence_threshold
+        )
 
-        left_pt = np.array([left_sh["x"], left_sh["y"]], dtype=np.float32)
-        right_pt = np.array([right_sh["x"], right_sh["y"]], dtype=np.float32)
+        if shoulders_valid:
+            left_pt = np.array([left_sh["x"], left_sh["y"]], dtype=np.float32)
+            right_pt = np.array([right_sh["x"], right_sh["y"]], dtype=np.float32)
+            if np.all(np.isfinite(left_pt)) and np.all(np.isfinite(right_pt)):
+                # 2D shoulder midpoint for (x, y); keep center_z = 0.0 (exact match with NB00 training formula:
+                # x'=(x-cx)/s, y'=(y-cy)/s, z'=z/s).
+                mid_xy = (left_pt + right_pt) / 2.0
+                center = np.array([mid_xy[0], mid_xy[1], 0.0], dtype=np.float32)
+                dist = float(np.linalg.norm(left_pt - right_pt))
+                scale = max(dist * self.shoulder_scale_multiplier, self.min_scale)
 
-        if not np.all(np.isfinite(left_pt)) or not np.all(np.isfinite(right_pt)):
-            if self.last_center is not None and self.last_scale is not None:
-                return self.last_center, self.last_scale
-            return default_center, default_scale
+                self.last_center = center
+                self.last_scale = scale
+                return center, scale
 
-        # 2D shoulder midpoint for (x, y); keep center_z = 0.0 because MediaPipe Hands z is
-        # already wrist-relative (wrist.z == 0) whereas Pose shoulder.z is hip-centered (~ -0.5).
-        # Subtracting Pose shoulder.z from Hand z creates a bogus +2..+3 Z-shift & noisy wrist dz.
-        mid_xy = (left_pt + right_pt) / 2.0
-        center = np.array([mid_xy[0], mid_xy[1], 0.0], dtype=np.float32)
-        dist = float(np.linalg.norm(left_pt - right_pt))  # 2D Euclidean distance in image plane
-        scale = max(dist * self.shoulder_scale_multiplier, self.min_scale)
+        # Fallback 1: temporal anchor inheritance if shoulders briefly occluded
+        if self.last_center is not None and self.last_scale is not None:
+            return self.last_center, self.last_scale
 
-        self.last_center = center
-        self.last_scale = scale
-        return center, scale
+        # Fallback 2: estimate from other valid upper-body pose points (exact NB00 fallback)
+        valid_body_xy = []
+        for idx in (0, 11, 12, 13, 14, 15, 16, 23, 24):
+            if idx < len(pose_landmarks):
+                pt = pose_landmarks[idx]
+                vis = pt.get("visibility", 1.0)
+                pres = pt.get("presence", 1.0)
+                if vis >= self.pose_visibility_threshold and pres >= self.pose_presence_threshold:
+                    xy = np.array([pt["x"], pt["y"]], dtype=np.float32)
+                    if np.all(np.isfinite(xy)):
+                        valid_body_xy.append(xy)
+        if len(valid_body_xy) >= 2:
+            xy_arr = np.stack(valid_body_xy, axis=0)
+            mid_xy = xy_arr.mean(axis=0)
+            scale = max(float(np.max(np.ptp(xy_arr, axis=0))) * self.shoulder_scale_multiplier, self.min_scale)
+            return np.array([mid_xy[0], mid_xy[1], 0.0], dtype=np.float32), scale
+
+        return default_center, default_scale
 
     def check_signing_space(
         self,

@@ -127,17 +127,23 @@ class CTCDecoder:
         )
         log_p = -ctc_loss
 
-        # Extract Top-K
+        # Exact log-probability of the all-blank (no-sign) alignment path: sum_t log P(blank | t)
+        log_p_blank = log_probs[:, 0, self.blank_id].sum().unsqueeze(0)
+
+        # Numerically stable Bayesian posterior across all 400 single-gloss hypotheses + all-blank hypothesis.
+        # Properly accounts for CTC Blank and all competing classes so blank-dominated inputs never inflate to 80-99%,
+        # while avoiding exp() underflow on long/noisy sequences.
+        all_probs = torch.nn.functional.softmax(torch.cat([log_p, log_p_blank], dim=0), dim=0)
+
+        # Extract Top-K non-blank candidates
         actual_k = min(k, num_classes)
         topk_scores, topk_indices = torch.topk(log_p, actual_k)
-
-        # Softmax over Top-K for relative diagnostic confidence
-        relative_probs = torch.nn.functional.softmax(topk_scores, dim=-1).tolist()
+        topk_probs = all_probs[topk_indices].tolist()
         scores_list = topk_scores.tolist()
         indices_list = topk_indices.tolist()
 
         candidates = []
-        for rank, (idx, score, prob) in enumerate(zip(indices_list, scores_list, relative_probs), start=1):
+        for rank, (idx, score, prob) in enumerate(zip(indices_list, scores_list, topk_probs), start=1):
             candidates.append({
                 "rank": rank,
                 "label_id": int(idx),

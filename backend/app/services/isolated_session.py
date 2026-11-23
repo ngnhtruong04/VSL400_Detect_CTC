@@ -55,6 +55,9 @@ class IsolatedRecognitionSession:
         motion_start_threshold: float = 0.025,
         motion_continue_threshold: float = 0.008,
         pause_timeout_sec: float = 1.6,
+        hands_absent_stop_sec: float = 0.45,
+        min_inference_frames: int = 45,
+        edge_hold_frames: int = 4,
     ):
         self.session_id = session_id or str(uuid.uuid4())
         self.extractor = LandmarkExtractor()
@@ -78,6 +81,10 @@ class IsolatedRecognitionSession:
         self.motion_start_threshold = motion_start_threshold
         self.motion_continue_threshold = motion_continue_threshold
         self.pause_timeout_sec = pause_timeout_sec
+        self.hands_absent_stop_sec = hands_absent_stop_sec
+        # Training-parity temporal normalization (VSL400 clips: min=34, median=63 + EDGE_HOLD_RANGE=(2,5))
+        self.min_inference_frames = min_inference_frames
+        self.edge_hold_frames = edge_hold_frames
 
         # State machine
         self.state: IsolatedState = IsolatedState.IDLE
@@ -85,8 +92,14 @@ class IsolatedRecognitionSession:
         self.recording_start_time: Optional[float] = None
         self.last_motion_time: Optional[float] = None
         self.last_prediction: Optional[IsolatedPrediction] = None
-        # True when recording was manually triggered by user (never auto-stop on pause/hands lowered)
+        # True when recording was manually triggered by user (auto-stops when both hands disappear after signing)
         self.manual_recording: bool = False
+        # Hand-presence tracking for hands-lowered / skeleton-absent auto-stop & trailing-silence trimming
+        self.has_seen_hands: bool = False
+        self.hand_frames_count: int = 0
+        self.hands_lost_time: Optional[float] = None
+        self.last_hand_buffer_idx: int = 0
+        self.last_model_input_frames: int = 0
 
         # Timing & Performance
         self.frame_times: List[float] = []
@@ -108,26 +121,119 @@ class IsolatedRecognitionSession:
         self.last_forward_ms = 0.0
         self.last_decode_ms = 0.0
         self.manual_recording = False
+        self.has_seen_hands = False
+        self.hand_frames_count = 0
+        self.hands_lost_time = None
+        self.last_hand_buffer_idx = 0
+        self.last_model_input_frames = 0
 
     def start_recording(self):
-        """Manually trigger recording for isolated sign (manual mode: no auto-stop)."""
+        """Manually trigger recording for isolated sign; auto-stops once hands appear and are then lowered out of frame."""
         self.state = IsolatedState.RECORDING
         self.frames_buffer.clear()
+        self.preprocessor.prev_hand_coords = None
+        self.preprocessor.prev_hand_valid = None
         now = time.time()
         self.recording_start_time = now
         self.last_motion_time = now
         self.last_prediction = None
         self.manual_recording = True
+        self.has_seen_hands = False
+        self.hand_frames_count = 0
+        self.hands_lost_time = None
+        self.last_hand_buffer_idx = 0
+        self.last_model_input_frames = 0
 
     def stop_recording(self):
         """Manually finish recording and trigger inference."""
         if self.state == IsolatedState.RECORDING:
             self.state = IsolatedState.INFERRING
 
+    def _get_trimmed_segment(self) -> List[np.ndarray]:
+        """Returns recorded frames trimmed up to the last frame containing a detected hand skeleton."""
+        if self.last_hand_buffer_idx > 0:
+            return list(self.frames_buffer[: self.last_hand_buffer_idx])
+        return list(self.frames_buffer)
+
+    def _prepare_inference_sequence(self, segment_features: List[np.ndarray]) -> np.ndarray:
+        """Aligns isolated segment length & edge holds to VSL400 training distribution.
+
+        1. If recorded clip is shorter than `min_inference_frames` (e.g. fast 15-30f sign vs
+           VSL400 training min=34, median=63, TCN receptive field=33), performs validity-aware
+           linear temporal resampling of hand xyz (strictly preserving missing-hand zeros) and
+           recomputes frame-to-frame velocity dxyz at the normalized rate.
+        2. Prepends & appends `edge_hold_frames` static endpoint holds (dxyz=0), matching
+           EDGE_HOLD_RANGE=(2, 5) used in VSL400 training notebooks (NB05/NB08).
+        """
+        raw = np.stack(segment_features, axis=0).astype(np.float32)  # (T, 294)
+        T = raw.shape[0]
+        mat = raw.reshape(T, 42, 7)
+        xyz = mat[:, :, :3].copy()
+        valid = mat[:, :, 6] > 0.5
+
+        if T < self.min_inference_frames and T >= 2:
+            target_t = self.min_inference_frames
+            u = np.linspace(0.0, float(T - 1), target_t, dtype=np.float32)
+            i0 = np.floor(u).astype(np.int64)
+            i1 = np.minimum(i0 + 1, T - 1)
+            frac = u - i0
+            alpha = frac[:, None, None]  # (target_t, 1, 1)
+
+            v0 = valid[i0]  # (target_t, 42)
+            v1 = valid[i1]
+            both = v0 & v1
+
+            near_idx = np.where(frac[:, None] < 0.5, i0[:, None], i1[:, None])
+            j_idx = np.arange(42)[None, :]
+            near_xyz = xyz[near_idx, j_idx]
+            near_v = valid[near_idx, j_idx]
+
+            interp_xyz = (1.0 - alpha) * xyz[i0] + alpha * xyz[i1]
+            xyz = np.where(
+                both[:, :, None],
+                interp_xyz,
+                np.where(near_v[:, :, None], near_xyz, 0.0),
+            ).astype(np.float32)
+            valid = np.where(both, True, near_v)
+
+        if self.edge_hold_frames > 0:
+            n_hold = self.edge_hold_frames
+            xyz = np.concatenate(
+                [
+                    np.repeat(xyz[:1], n_hold, axis=0),
+                    xyz,
+                    np.repeat(xyz[-1:], n_hold, axis=0),
+                ],
+                axis=0,
+            )
+            valid = np.concatenate(
+                [
+                    np.repeat(valid[:1], n_hold, axis=0),
+                    valid,
+                    np.repeat(valid[-1:], n_hold, axis=0),
+                ],
+                axis=0,
+            )
+
+        # Strict NB08 velocity contract: vel[0]=0, vel[t]=xyz[t]-xyz[t-1] iff valid at both t and t-1
+        vel = np.zeros_like(xyz, dtype=np.float32)
+        if len(xyz) > 1:
+            vel[1:] = xyz[1:] - xyz[:-1]
+            pair_valid = valid[1:] & valid[:-1]
+            vel[1:][~pair_valid] = 0.0
+
+        xyz[~valid] = 0.0
+        feat = np.concatenate(
+            [xyz, vel, valid[:, :, None].astype(np.float32)],
+            axis=-1,
+        ).astype(np.float32)
+        return feat.reshape(len(xyz), 294)
+
     def _build_finalize_message(self) -> IsolatedRecognitionMessage:
+        input_t = self.last_model_input_frames if self.last_model_input_frames > 0 else len(self.frames_buffer)
         model_diag = ModelDiagnostic(
             buffer_frames=len(self.frames_buffer),
-            input_shape=f"(1, {len(self.frames_buffer)}, 294)" if len(self.frames_buffer) > 0 else "(1, 0, 294)",
+            input_shape=f"(1, {input_t}, 294)" if input_t > 0 else "(1, 0, 294)",
             blank_ratio=self.last_prediction.blank_ratio if self.last_prediction else 0.0,
             mediapipe_ms=round(self.last_mediapipe_ms, 2),
             preprocessing_ms=round(self.last_preprocessing_ms, 2),
@@ -154,15 +260,22 @@ class IsolatedRecognitionSession:
 
     def finalize_and_infer(self) -> IsolatedRecognitionMessage:
         """Synchronously forces immediate inference on current buffer and returns message."""
+        if self.state == IsolatedState.RESULT and self.last_prediction is not None:
+            return self._build_finalize_message()
         self.manual_recording = False
-        self.last_prediction = self.infer_segment(list(self.frames_buffer))
+        segment = self._get_trimmed_segment()
+        self.frames_buffer = segment
+        self.last_prediction = self.infer_segment(segment)
         self.state = IsolatedState.RESULT
         return self._build_finalize_message()
 
     async def finalize_and_infer_async(self) -> IsolatedRecognitionMessage:
         """Asynchronously runs inference in executor without blocking the WebSocket event loop."""
+        if self.state == IsolatedState.RESULT and self.last_prediction is not None:
+            return self._build_finalize_message()
         self.manual_recording = False
-        segment_copy = list(self.frames_buffer)
+        segment_copy = self._get_trimmed_segment()
+        self.frames_buffer = segment_copy
         loop = asyncio.get_running_loop()
         self.last_prediction = await loop.run_in_executor(
             _isolated_executor,
@@ -175,6 +288,7 @@ class IsolatedRecognitionSession:
     def infer_segment(self, segment_features: List[np.ndarray]) -> IsolatedPrediction:
         """Runs full sequence inference on a collected sign segment."""
         if len(segment_features) < self.min_frames:
+            self.last_model_input_frames = 0
             return IsolatedPrediction(
                 gloss="",
                 label_id=-1,
@@ -183,8 +297,9 @@ class IsolatedRecognitionSession:
                 blank_ratio=1.0,
             )
 
-        seq_np = np.stack(segment_features, axis=0).astype(np.float32)  # (T, 294)
-        seq_tensor = torch.from_numpy(seq_np).unsqueeze(0).to(self.device)  # (1, T, 294)
+        seq_np = self._prepare_inference_sequence(segment_features)  # (T_eff, 294)
+        self.last_model_input_frames = int(seq_np.shape[0])
+        seq_tensor = torch.from_numpy(seq_np).unsqueeze(0).to(self.device)  # (1, T_eff, 294)
 
         t0 = time.perf_counter()
         with torch.inference_mode():
@@ -276,44 +391,82 @@ class IsolatedRecognitionSession:
         )
         self.last_preprocessing_ms = (time.perf_counter() - t_prep) * 1000.0
 
+        has_left_hand = bool(left_hand and len(left_hand) == 21)
+        has_right_hand = bool(right_hand and len(right_hand) == 21)
+        has_any_hand = has_left_hand or has_right_hand
+
         # 3. State machine transitions
         if self.state == IsolatedState.IDLE:
             # Auto-trigger recording only on clear active motion in signing space
-            if self.preprocessor.in_signing_space and motion_energy >= self.motion_start_threshold:
+            if has_any_hand and self.preprocessor.in_signing_space and motion_energy >= self.motion_start_threshold:
                 self.state = IsolatedState.RECORDING
                 self.frames_buffer = [frame_features]
                 self.recording_start_time = now
                 self.last_motion_time = now
                 self.last_prediction = None
                 self.manual_recording = False
+                self.has_seen_hands = True
+                self.hand_frames_count = 1
+                self.hands_lost_time = None
+                self.last_hand_buffer_idx = 1
 
         elif self.state == IsolatedState.RECORDING:
-            self.frames_buffer.append(frame_features)
-            if motion_energy >= self.motion_continue_threshold and self.preprocessor.in_signing_space:
-                self.last_motion_time = now
+            if has_any_hand:
+                self.has_seen_hands = True
+                self.hands_lost_time = None
+                self.frames_buffer.append(frame_features)
+                self.hand_frames_count += 1
+                self.last_hand_buffer_idx = len(self.frames_buffer)
+                if motion_energy >= self.motion_continue_threshold and self.preprocessor.in_signing_space:
+                    self.last_motion_time = now
+            elif self.has_seen_hands:
+                # Hands lowered or temporarily lost after signing started
+                self.frames_buffer.append(frame_features)
+                if self.hands_lost_time is None:
+                    self.hands_lost_time = now
+            # If hands have not appeared yet after clicking Start Record, wait without buffering empty frames
 
             buffer_full = len(self.frames_buffer) >= self.max_frames
+            hands_absent_elapsed = (now - self.hands_lost_time) if self.hands_lost_time is not None else 0.0
+            hands_gone = (
+                self.has_seen_hands
+                and (not has_any_hand)
+                and (hands_absent_elapsed >= self.hands_absent_stop_sec)
+            )
 
             if self.manual_recording:
-                # Manual mode: ONLY stop when user clicks Stop or buffer reaches max_frames (6s @ 30fps)
+                # Manual mode: auto-stop once both hands disappear (no hand skeleton) after signing,
+                # or when user clicks Stop, or safety cap max_frames (180 frames) is reached.
                 if buffer_full:
                     self.state = IsolatedState.INFERRING
+                elif hands_gone:
+                    if self.hand_frames_count >= self.min_frames:
+                        self.state = IsolatedState.INFERRING
+                    else:
+                        # Ignore brief accidental hand flash (< min_frames) while moving off mouse; keep waiting
+                        self.frames_buffer.clear()
+                        self.has_seen_hands = False
+                        self.hand_frames_count = 0
+                        self.hands_lost_time = None
+                        self.last_hand_buffer_idx = 0
             else:
-                # Auto mode: stop on sustained pause, hands lowered, or buffer full
-                if len(self.frames_buffer) >= self.min_frames:
+                # Auto mode: stop when hands disappear, hands lowered outside signing space, sustained pause, or buffer full
+                if self.hand_frames_count >= self.min_frames:
                     paused = (self.last_motion_time is not None) and ((now - self.last_motion_time) >= self.pause_timeout_sec)
                     hands_lowered = (not self.preprocessor.in_signing_space) and (self.last_motion_time is not None) and ((now - self.last_motion_time) >= 0.9)
-                    if paused or hands_lowered or buffer_full:
+                    if hands_gone or paused or hands_lowered or buffer_full:
                         self.state = IsolatedState.INFERRING
-                elif (self.last_motion_time is not None) and ((now - self.last_motion_time) > 2.0):
+                elif hands_gone or ((self.last_motion_time is not None) and ((now - self.last_motion_time) > 2.0)):
                     self.reset()
 
         if self.state == IsolatedState.INFERRING:
             self.manual_recording = False
+            segment_to_infer = self._get_trimmed_segment()
+            self.frames_buffer = segment_to_infer
             self.last_prediction = await loop.run_in_executor(
                 _isolated_executor,
                 self.infer_segment,
-                list(self.frames_buffer),
+                segment_to_infer,
             )
             self.state = IsolatedState.RESULT
 
@@ -324,8 +477,8 @@ class IsolatedRecognitionSession:
             left_valid_ratio=round(self.preprocessor.last_left_valid_ratio, 2),
             right_valid_ratio=round(self.preprocessor.last_right_valid_ratio, 2),
             overall_valid_ratio=round(self.preprocessor.last_overall_valid_ratio, 2),
-            has_left_hand=bool(left_hand and len(left_hand) == 21),
-            has_right_hand=bool(right_hand and len(right_hand) == 21),
+            has_left_hand=has_left_hand,
+            has_right_hand=has_right_hand,
             in_signing_space=self.preprocessor.in_signing_space,
             left_hand=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in left_hand] if left_hand else None,
             right_hand=[NormalizedPoint(x=round(p["x"], 4), y=round(p["y"], 4), z=round(p.get("z", 0.0), 4)) for p in right_hand] if right_hand else None,
@@ -333,9 +486,14 @@ class IsolatedRecognitionSession:
         )
         self._last_landmarks_diag = landmarks_diag
 
+        input_t = (
+            self.last_model_input_frames
+            if (self.state == IsolatedState.RESULT and self.last_model_input_frames > 0)
+            else len(self.frames_buffer)
+        )
         model_diag = ModelDiagnostic(
             buffer_frames=len(self.frames_buffer),
-            input_shape=f"(1, {len(self.frames_buffer)}, 294)" if len(self.frames_buffer) > 0 else "(1, 0, 294)",
+            input_shape=f"(1, {input_t}, 294)" if input_t > 0 else "(1, 0, 294)",
             blank_ratio=self.last_prediction.blank_ratio if self.last_prediction else 0.0,
             mediapipe_ms=round(self.last_mediapipe_ms, 2),
             preprocessing_ms=round(self.last_preprocessing_ms, 2),
