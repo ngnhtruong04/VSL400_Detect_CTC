@@ -1,0 +1,9 @@
+﻿trial,reference_gloss,reference_sentence,predicted_gloss,predicted_sentence,translation_status,exact_match
+1,Bố,Bố.,Bố,Bố,gemini,True
+2,Chụp hình,Chụp hình.,Chụp hình,Chụp hình,gemini,True
+3,Giúp đỡ,Giúp đỡ.,Giúp đỡ,Giúp đỡ,gemini,True
+4,Bố -> Chụp hình,Bố chụp hình.,Bố -> Chụp hình,Bố chụp hình.,gemini,True
+5,Bố -> Giúp đỡ,Bố giúp đỡ.,Bố -> Giúp đỡ,Bố giúp đỡ.,fallback_error,True
+6,Giúp đỡ -> Chụp hình,Giúp đỡ chụp hình.,Giúp đỡ -> Chụp hình,Giúp đỡ chụp hình,gemini,True
+7,Bố -> Giúp đỡ -> Chụp hình,Bố giúp đỡ chụp hình.,Bóng chuyền,Bóng chuyền,gemini,False
+8,Bố -> Chụp hình -> Giúp đỡ,Bố chụp hình và giúp đỡ.,Bố,Bố,gemini,False

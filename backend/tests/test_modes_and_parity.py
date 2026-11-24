@@ -277,8 +277,127 @@ def test_continuous_reset_clears_state():
     assert len(session.utterance_buffer) == 0
     assert len(session.recent_window) == 0
     assert session.live_tokens == []
+    assert session.session_final_tokens == []
     assert session.final_tokens == []
     assert session.fsm.state == FSMState.IDLE
+
+
+def test_rule_based_sentence_formatting_natural_vietnamese():
+    """Rule-based fallback must reorder VSL S-O-V -> Vietnamese S-V-O and keep natural casing without mid-sentence periods."""
+    import asyncio
+    from backend.app.services.language_service import LanguageService
+
+    svc = LanguageService(enabled=False, provider="none")
+    # S-V-O already in Vietnamese order
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Giúp đỡ", "Bố"])) == "Chú giúp đỡ bố."
+    # Classic VSL S-O-V -> Vietnamese S-V-O
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Chú", "Giúp đỡ"])) == "Bố giúp đỡ chú."
+    assert asyncio.run(svc.to_natural_sentence(["Buổi sáng", "Bố", "Chú", "Giúp đỡ"])) == "Buổi sáng bố giúp đỡ chú."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Chợ", "Đi"])) == "Bố đi chợ."
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Bệnh viện", "Khám bệnh"])) == "Chú khám bệnh ở bệnh viện."
+    assert asyncio.run(svc.to_natural_sentence(["Mẹ", "Chợ", "Đi", "Mua bán"])) == "Mẹ đi chợ mua bán."
+    # 2-word: O-V reorders for non-person objects, S-V stays intact for people
+    assert asyncio.run(svc.to_natural_sentence(["Phở", "Ăn"])) == "Ăn phở."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Ăn"])) == "Bố ăn."
+    # Proper nouns & parenthetical labels
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Đi", "Việt Nam"])) == "Chú đi Việt Nam."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Cao (người)"])) == "Bố cao."
+
+
+def test_continuous_multi_segment_translates_full_accumulated_gloss_sequence(tmp_path):
+    """Signing Chú -> pause -> Giúp đỡ -> pause -> Bố must produce ONE sentence 'Chú giúp đỡ bố.', never 'Chú. Giúp đỡ. Bố.'."""
+    import asyncio
+    from backend.app.services.language_service import LanguageService
+
+    session = ContinuousRecognitionSession(
+        language_service=LanguageService(enabled=False, provider="none")
+    )
+    session.eval_log_path = tmp_path / "multi_seg.jsonl"
+    try:
+        async def run_flow():
+            # Segment 1: Chú
+            session.live_tokens = ["Chú"]
+            msg1 = await session.commit_utterance_async()
+            assert msg1.continuous.final_tokens == ["Chú"]
+            assert msg1.continuous.final_sentence == "Chú."
+
+            # Segment 2: Giúp đỡ
+            session.live_tokens = ["Giúp đỡ"]
+            msg2 = await session.commit_utterance_async()
+            assert msg2.continuous.final_tokens == ["Chú", "Giúp đỡ"]
+            assert msg2.continuous.final_sentence == "Chú giúp đỡ."
+
+            # Segment 3: Bố
+            session.live_tokens = ["Bố"]
+            msg3 = await session.commit_utterance_async()
+            assert msg3.continuous.final_tokens == ["Chú", "Giúp đỡ", "Bố"]
+            assert msg3.continuous.final_sentence == "Chú giúp đỡ bố."
+
+            # Re-translating manually with empty active buffer still translates the full accumulated sequence
+            msg4 = await session.commit_utterance_async()
+            assert msg4.continuous.final_tokens == ["Chú", "Giúp đỡ", "Bố"]
+            assert msg4.continuous.final_sentence == "Chú giúp đỡ bố."
+
+        asyncio.run(run_flow())
+    finally:
+        session.close()
+
+
+def test_eval_5_6_1_telemetry_and_wer_summary(tmp_path):
+    """Verifies automatic JSONL telemetry logging and Section 5.6.1 WER/ESM/latency calculator."""
+    import asyncio
+    import json
+    from backend.app.services.language_service import LanguageService
+    from scripts.evaluate_webcam_5_6_1 import compute_wer_esm, parse_session_log
+
+    # 1. Verify all 15 template glosses exist in VSL400 label_map.json
+    with open(settings.LABEL_MAP_PATH, "r", encoding="utf-8") as lf:
+        label_to_id = json.load(lf)["label_to_id"]
+    with open(settings.PROJECT_ROOT / "scripts" / "webcam_script_template.json", "r", encoding="utf-8") as sf:
+        tpl = json.load(sf)
+    for trial in tpl["trials"]:
+        for g in trial["reference_gloss"]:
+            assert g in label_to_id, f"Template gloss {g!r} not in VSL400 label_map.json!"
+
+    # 2. Simulate 2 webcam trials delimited by reset() on a temporary log file
+    session = ContinuousRecognitionSession(
+        language_service=LanguageService(enabled=False, provider="none")
+    )
+    session.eval_log_path = tmp_path / "eval_test.jsonl"
+    try:
+        async def run_trials():
+            # Fake frame telemetry
+            session._record_eval_event({"event": "frame", "ts": 1.0, "fps": 24.5, "mediapipe_ms": 18.2, "preprocessing_ms": 0.4, "fsm_state": "SIGNING"}, flush=True)
+            session._record_eval_event({"event": "frame", "ts": 1.1, "fps": 25.5, "mediapipe_ms": 22.0, "preprocessing_ms": 0.5, "fsm_state": "SIGNING"}, flush=True)
+
+            # Trial 1: exact match ['Bố', 'Chú', 'Giúp đỡ']
+            session.live_tokens = ["Bố", "Chú", "Giúp đỡ"]
+            await session.commit_utterance_async()
+            session.reset()
+
+            # Trial 2: 1 substitution ['Bố', 'Chợ', 'Đi'] vs ref ['Bố', 'Nhà', 'Đi']
+            session.live_tokens = ["Bố", "Chợ", "Đi"]
+            await session.commit_utterance_async()
+            session.reset()
+
+        asyncio.run(run_trials())
+    finally:
+        session.close()
+
+    parsed = parse_session_log(tmp_path / "eval_test.jsonl")
+    assert len(parsed["trials"]) == 2
+    assert parsed["trials"][0]["predicted_gloss"] == ["Bố", "Chú", "Giúp đỡ"]
+    assert parsed["trials"][0]["predicted_sentence"] == "Bố giúp đỡ chú."
+    assert parsed["trials"][1]["predicted_gloss"] == ["Bố", "Chợ", "Đi"]
+    assert len(parsed["mediapipe_ms"]) == 2
+
+    refs = [["Bố", "Chú", "Giúp đỡ"], ["Bố", "Nhà", "Đi"]]
+    hyps = [t["predicted_gloss"] for t in parsed["trials"]]
+    metrics = compute_wer_esm(refs, hyps)
+    assert metrics["S"] == 1 and metrics["D"] == 0 and metrics["I"] == 0
+    assert metrics["exact_count"] == 1
+    assert abs(metrics["wer_pct"] - 16.67) < 0.05
+    assert abs(metrics["esm_pct"] - 50.0) < 0.05
 
 
 def test_sessions_are_isolated():

@@ -1,0 +1,392 @@
+{
+  "Bố": {
+    "out": "Bố.",
+    "status": "gemini",
+    "ms": 1853.6
+  },
+  "Chụp hình": {
+    "out": "Chụp hình",
+    "status": "gemini",
+    "ms": 1505.8
+  },
+  "Giúp đỡ": {
+    "out": "Giúp đỡ",
+    "status": "gemini",
+    "ms": 2798.5
+  },
+  "Cảm ơn": {
+    "out": "Cảm ơn.",
+    "status": "gemini",
+    "ms": 1762.1
+  },
+  "Xin lỗi": {
+    "out": "Xin lỗi.",
+    "status": "gemini",
+    "ms": 1633.0
+  },
+  "Bệnh viện": {
+    "out": "Bệnh viện",
+    "status": "gemini",
+    "ms": 1136.4
+  },
+  "Ô tô": {
+    "out": "Ô tô",
+    "status": "gemini",
+    "ms": 1537.8
+  },
+  "Ấm": {
+    "out": "Trời ấm.",
+    "status": "gemini",
+    "ms": 2196.4
+  },
+  "Chật": {
+    "out": "Chật",
+    "status": "gemini",
+    "ms": 2202.2
+  },
+  "Mưa": {
+    "out": "Trời mưa.",
+    "status": "gemini",
+    "ms": 1247.7
+  },
+  "Gió": {
+    "out": "Gió",
+    "status": "gemini",
+    "ms": 1196.4
+  },
+  "Ngủ": {
+    "out": "Ngủ.",
+    "status": "gemini",
+    "ms": 1225.5
+  },
+  "Nghỉ ngơi": {
+    "out": "Nghỉ ngơi.",
+    "status": "gemini",
+    "ms": 1087.2
+  },
+  "Bố | Chụp hình": {
+    "out": "Bố chụp hình.",
+    "status": "gemini",
+    "ms": 2243.5
+  },
+  "Bố | Giúp đỡ": {
+    "out": "Bố giúp đỡ.",
+    "status": "gemini",
+    "ms": 1328.2
+  },
+  "Giúp đỡ | Chụp hình": {
+    "out": "Giúp đỡ chụp hình",
+    "status": "gemini",
+    "ms": 1516.4
+  },
+  "Anh | Đọc": {
+    "out": "Anh đọc sách.",
+    "status": "gemini",
+    "ms": 2234.2
+  },
+  "Mẹ | Ngủ": {
+    "out": "Mẹ đang ngủ.",
+    "status": "gemini",
+    "ms": 1457.5
+  },
+  "Chợ | Đi": {
+    "out": "Tôi đi chợ.",
+    "status": "gemini",
+    "ms": 1660.3
+  },
+  "Phở | Ăn": {
+    "out": "Tôi ăn phở.",
+    "status": "gemini",
+    "ms": 3926.6
+  },
+  "Bún | Ăn": {
+    "out": "Ăn bún.",
+    "status": "gemini",
+    "ms": 1705.3
+  },
+  "Cà phê | Uống": {
+    "out": "Uống cà phê.",
+    "status": "gemini",
+    "ms": 1227.4
+  },
+  "Trà | Uống": {
+    "out": "Uống trà.",
+    "status": "gemini",
+    "ms": 1954.4
+  },
+  "Học sinh | Học": {
+    "out": "Học sinh học.",
+    "status": "gemini",
+    "ms": 1524.8
+  },
+  "Sinh viên | Học": {
+    "out": "Sinh viên học.",
+    "status": "gemini",
+    "ms": 1596.0
+  },
+  "Bác sĩ | Khám bệnh": {
+    "out": "Bác sĩ khám bệnh.",
+    "status": "gemini",
+    "ms": 1389.0
+  },
+  "Bố | Giúp đỡ | Chụp hình": {
+    "out": "Bố giúp đỡ chụp hình.",
+    "status": "gemini",
+    "ms": 2018.6
+  },
+  "Bác sĩ": {
+    "out": "Bác sĩ.",
+    "status": "gemini",
+    "ms": 3636.9
+  },
+  "Bóng chuyền": {
+    "out": "Chơi bóng chuyền",
+    "status": "gemini",
+    "ms": 2523.5
+  },
+  "Bố | Chụp hình | Giúp đỡ": {
+    "out": "Bố giúp đỡ chụp hình.",
+    "status": "gemini",
+    "ms": 3024.6
+  },
+  "Bố | Chú | Giúp đỡ": {
+    "out": "Bố giúp đỡ chú.",
+    "status": "gemini",
+    "ms": 2542.8
+  },
+  "Mẹ | Phở | Nấu": {
+    "out": "Mẹ nấu phở.",
+    "status": "gemini",
+    "ms": 2283.6
+  },
+  "Bố | Chợ | Đi": {
+    "out": "Bố đi chợ.",
+    "status": "gemini",
+    "ms": 2722.1
+  },
+  "Anh | Sách | Đọc": {
+    "out": "Anh đọc sách.",
+    "status": "gemini",
+    "ms": 2868.4
+  },
+  "Anh | Vở | Đọc": {
+    "out": "Anh đọc vở.",
+    "status": "gemini",
+    "ms": 9941.5
+  },
+  "Chị | Cà phê | Uống": {
+    "out": "Chị uống cà phê.",
+    "status": "gemini",
+    "ms": 2945.9
+  },
+  "Em | Cà phê | Uống": {
+    "out": "Em uống cà phê.",
+    "status": "gemini",
+    "ms": 12673.0
+  },
+  "Chú | Công ty | Làm việc": {
+    "out": "Chú làm việc ở công ty.",
+    "status": "gemini",
+    "ms": 1226.1
+  },
+  "Chú | Làm việc": {
+    "out": "Chú làm việc.",
+    "status": "gemini",
+    "ms": 11824.3
+  },
+  "Em | Bóng đá | Thích": {
+    "out": "Em thích đá bóng.",
+    "status": "gemini",
+    "ms": 14377.6
+  },
+  "Em | Bóng rổ | Thích": {
+    "out": "Em thích chơi bóng rổ.",
+    "status": "gemini",
+    "ms": 6940.3
+  },
+  "Bác sĩ | Bệnh viện | Làm việc": {
+    "out": "Bác sĩ làm việc ở bệnh viện.",
+    "status": "gemini",
+    "ms": 14526.9
+  },
+  "Y tá | Bệnh viện | Làm việc": {
+    "out": "Y tá làm việc ở bệnh viện.",
+    "status": "gemini",
+    "ms": 977.1
+  },
+  "Buổi sáng | Bố | Chú | Giúp đỡ": {
+    "out": "Buổi sáng bố giúp đỡ chú.",
+    "status": "gemini",
+    "ms": 1275.3
+  },
+  "Mẹ | Chợ | Đi | Mua bán": {
+    "out": "Mẹ đi chợ mua bán.",
+    "status": "gemini",
+    "ms": 4368.1
+  },
+  "Chú | Bệnh viện | Đi | Khám bệnh": {
+    "out": "Chú đi bệnh viện khám bệnh.",
+    "status": "gemini",
+    "ms": 1098.9
+  },
+  "Buổi tối | Anh | Sách | Đọc": {
+    "out": "Buổi tối anh đọc sách.",
+    "status": "gemini",
+    "ms": 997.3
+  },
+  "Buổi chiều | Anh | Sách | Đọc": {
+    "out": "Buổi chiều anh đọc sách.",
+    "status": "gemini",
+    "ms": 9594.6
+  },
+  "Chủ nhật | Bố | Công viên | Đi": {
+    "out": "Chủ nhật bố đi công viên.",
+    "status": "gemini",
+    "ms": 3062.3
+  },
+  "Thứ bảy | Bố | Công viên | Đi": {
+    "out": "Thứ bảy bố đi công viên.",
+    "status": "gemini",
+    "ms": 3640.8
+  },
+  "Mẹ | Nhà | Phở | Nấu": {
+    "out": "Mẹ nấu phở ở nhà.",
+    "status": "gemini",
+    "ms": 1537.7
+  },
+  "Mẹ | Nhà | Nấu": {
+    "out": "Mẹ nấu ăn ở nhà.",
+    "status": "gemini",
+    "ms": 16530.2
+  },
+  "Sinh viên | Trường Đại học | Đi | Học": {
+    "out": "Sinh viên đi học ở trường đại học.",
+    "status": "gemini",
+    "ms": 8298.0
+  },
+  "Sinh viên | Trường học | Đi | Học": {
+    "out": "Sinh viên đi học ở trường học.",
+    "status": "gemini",
+    "ms": 1360.8
+  },
+  "Buổi trưa | Chị | Nhà hàng | Ăn": {
+    "out": "Buổi trưa chị ăn ở nhà hàng.",
+    "status": "gemini",
+    "ms": 9274.9
+  },
+  "Buổi trưa | Nhà hàng | Ăn": {
+    "out": "Buổi trưa ăn ở nhà hàng.",
+    "status": "gemini",
+    "ms": 9612.2
+  },
+  "Bố | Xe máy | Công ty | Đi": {
+    "out": "Bố đi xe máy đến công ty.",
+    "status": "gemini",
+    "ms": 976.8
+  },
+  "Bố | Xe đạp | Công ty | Đi": {
+    "out": "Bố đi xe đạp đến công ty.",
+    "status": "gemini",
+    "ms": 2774.1
+  },
+  "Em | Buổi tối | Nhà | Làm bài tập": {
+    "out": "Buổi tối em làm bài tập ở nhà.",
+    "status": "gemini",
+    "ms": 1470.7
+  },
+  "Em | Buổi tối | Làm bài tập | Đọc": {
+    "out": "Em buổi tối làm bài tập và đọc sách.",
+    "status": "gemini",
+    "ms": 3472.2
+  },
+  "Buổi sáng | Mẹ | Chợ | Mua bán | Cà phê": {
+    "out": "Buổi sáng mẹ đi chợ mua cà phê.",
+    "status": "gemini",
+    "ms": 3474.2
+  },
+  "Chủ nhật | Bố | Chú | Công viên | Chơi cờ": {
+    "out": "Chủ nhật bố và chú đi công viên chơi cờ.",
+    "status": "gemini",
+    "ms": 1006.2
+  },
+  "Buổi tối | Bố | Mẹ | Nhà | Ăn": {
+    "out": "Buổi tối bố mẹ ăn cơm ở nhà.",
+    "status": "gemini",
+    "ms": 1864.6
+  },
+  "Buổi tối | Bố | Nhà | Ăn": {
+    "out": "Buổi tối bố ăn cơm ở nhà.",
+    "status": "gemini",
+    "ms": 7090.3
+  },
+  "Thứ hai | Anh | Xe buýt | Trường học | Đi": {
+    "out": "Thứ hai anh đi xe buýt đến trường học.",
+    "status": "gemini",
+    "ms": 1789.4
+  },
+  "Thứ ba | Anh | Xe buýt | Trường học | Đi": {
+    "out": "Thứ ba anh đi xe buýt đến trường học.",
+    "status": "gemini",
+    "ms": 13030.5
+  },
+  "Buổi chiều | Chị | Siêu thị | Đi | Mua bán": {
+    "out": "Buổi chiều chị đi siêu thị mua sắm.",
+    "status": "gemini",
+    "ms": 859.3
+  },
+  "Buổi chiều | Chị | Chợ | Mua bán": {
+    "out": "Buổi chiều chị đi chợ mua bán.",
+    "status": "gemini",
+    "ms": 1044.5
+  },
+  "Mùa hè | Anh | Chị | Bơi lội | Thích": {
+    "out": "Anh chị thích bơi lội vào mùa hè.",
+    "status": "gemini",
+    "ms": 1209.9
+  },
+  "Mùa xuân | Anh | Chị | Bơi lội": {
+    "out": "Mùa xuân anh chị bơi lội.",
+    "status": "gemini",
+    "ms": 9450.2
+  },
+  "Buổi sáng | Chú | Quán cà phê | Cà phê | Uống": {
+    "out": "Buổi sáng chú uống cà phê ở quán cà phê.",
+    "status": "gemini",
+    "ms": 1420.6
+  },
+  "Buổi sáng | Quán cà phê | Trà | Uống": {
+    "out": "Buổi sáng uống trà ở quán cà phê.",
+    "status": "gemini",
+    "ms": 1405.3
+  },
+  "Thứ bảy | Em | Nhà sách | Sách | Đọc": {
+    "out": "Thứ bảy em đi nhà sách đọc sách.",
+    "status": "gemini",
+    "ms": 11614.7
+  },
+  "Thứ bảy | Em | Nhà sách | Vở | Viết": {
+    "out": "Thứ bảy em đi nhà sách mua vở và bút viết.",
+    "status": "gemini",
+    "ms": 4783.4
+  },
+  "Buổi tối | Mẹ | Bố | Giúp đỡ | Rửa chén": {
+    "out": "Buổi tối mẹ giúp bố rửa chén.",
+    "status": "gemini",
+    "ms": 1210.4
+  },
+  "Buổi tối | Mẹ | Giúp đỡ | Giặt đồ": {
+    "out": "Buổi tối mẹ giúp đỡ giặt đồ.",
+    "status": "gemini",
+    "ms": 9327.1
+  },
+  "Tết Âm lịch | Ông nội | Bà nội | Nhà | Bánh chưng": {
+    "out": "Tết Âm lịch ông nội bà nội ở nhà gói bánh chưng.",
+    "status": "gemini",
+    "ms": 1842.9
+  },
+  "Tết Âm lịch | Ông ngoại | Nhà | Bánh tét": {
+    "out": "Ông ngoại làm bánh tét ở nhà trong dịp Tết Âm lịch.",
+    "status": "gemini",
+    "ms": 1413.3
+  }
+}

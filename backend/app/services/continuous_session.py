@@ -17,12 +17,13 @@ Key Architecture (30 FPS Lock):
 import asyncio
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
 import time
 import uuid
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
@@ -95,6 +96,7 @@ class ContinuousRecognitionSession:
         # Predictions & Token stability
         self.live_tokens: List[str] = []
         self.stable_tokens: List[str] = []
+        self.session_final_tokens: List[str] = []
         self.final_tokens: List[str] = []
         self.final_sentence: str = ""
         self.last_raw_tokens: List[int] = []
@@ -126,6 +128,31 @@ class ContinuousRecognitionSession:
             log_dir.mkdir(parents=True, exist_ok=True)
             self.debug_log_path = log_dir / f"continuous_debug_{int(time.time())}_{self.session_id[:8]}.jsonl"
             logger.info(f"Continuous debug logging enabled: {self.debug_log_path}")
+
+        # Lightweight evaluation telemetry log for Section 5.6.1 benchmarking (buffered flush, zero FPS stall)
+        eval_dir = settings.PROJECT_ROOT / "logs" / "eval_sessions"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        ts_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.eval_log_path: Path = eval_dir / f"eval_{ts_tag}_{self.session_id[:8]}.jsonl"
+        self._eval_log_buffer: List[str] = []
+        self._eval_has_written: bool = False
+
+    def _record_eval_event(self, payload: Dict[str, Any], flush: bool = False):
+        """Buffers lightweight JSONL telemetry for Section 5.6.1 evaluation without stalling frame processing."""
+        self._eval_log_buffer.append(json.dumps(payload, ensure_ascii=False))
+        if flush or len(self._eval_log_buffer) >= 30:
+            self._flush_eval_log()
+
+    def _flush_eval_log(self):
+        if not self._eval_log_buffer:
+            return
+        try:
+            with open(self.eval_log_path, "a", encoding="utf-8") as ef:
+                ef.write("\n".join(self._eval_log_buffer) + "\n")
+            self._eval_log_buffer.clear()
+            self._eval_has_written = True
+        except Exception as e:
+            logger.warning(f"Failed to flush eval telemetry log: {e}")
 
     def update_sensitivity(self, sensitivity: str):
         """Dynamically adjusts Endpoint FSM sensitivity ('low' | 'medium' | 'high')."""
@@ -173,6 +200,11 @@ class ContinuousRecognitionSession:
         now = time.time()
         self.endpoint_reason = "manual_commit"
 
+        last_motion_time = self.fsm.last_motion_time
+        fsm_wait_ms = round(max(0.0, (now - last_motion_time) * 1000.0), 2) if self.utterance_buffer else 0.0
+        commit_forward_ms = 0.0
+        commit_decode_ms = 0.0
+
         seq_np = self._get_trimmed_utterance_array()
         if seq_np is not None:
             (
@@ -182,14 +214,48 @@ class ContinuousRecognitionSession:
             ) = await loop.run_in_executor(_inference_executor, self._infer_and_decode_sync, seq_np)
             self.last_forward_ms = forward_ms
             self.last_decode_ms = decode_ms
+            commit_forward_ms = forward_ms
+            commit_decode_ms = decode_ms
             self.last_raw_tokens = list(raw_tokens)
             self.last_collapsed_tokens = list(collapsed_tokens)
             self.last_blank_ratio = blank_ratio
-            self.final_tokens = list(gloss_sequence) if len(gloss_sequence) > 0 else list(self.live_tokens)
+            new_tokens = list(gloss_sequence) if len(gloss_sequence) > 0 else list(self.live_tokens)
         else:
-            self.final_tokens = list(self.live_tokens)
+            new_tokens = list(self.live_tokens)
 
+        if new_tokens:
+            self.session_final_tokens.extend(new_tokens)
+        self.final_tokens = list(self.session_final_tokens)
+
+        t_llm = time.perf_counter()
         self.final_sentence = await self.language_service.to_natural_sentence(self.final_tokens)
+        llm_ms = round((time.perf_counter() - t_llm) * 1000.0, 2)
+        model_total_ms = round(commit_forward_ms + commit_decode_ms, 2)
+        e2e_ms = round(fsm_wait_ms + model_total_ms + llm_ms, 2)
+
+        if self.final_tokens:
+            self._record_eval_event(
+                {
+                    "event": "commit",
+                    "ts": now,
+                    "endpoint_reason": self.endpoint_reason,
+                    "new_tokens": new_tokens,
+                    "final_tokens": list(self.final_tokens),
+                    "final_sentence": self.final_sentence,
+                    "translation_status": self.language_service.last_status,
+                    "translation_error": self.language_service.last_error,
+                    "llm_model": self.language_service.model_name,
+                    "utterance_frames": len(self.utterance_buffer),
+                    "fsm_wait_ms": fsm_wait_ms,
+                    "forward_ms": round(commit_forward_ms, 2),
+                    "decode_ms": round(commit_decode_ms, 2),
+                    "model_total_ms": model_total_ms,
+                    "llm_ms": llm_ms,
+                    "e2e_from_sign_end_ms": e2e_ms,
+                    "fps": self._current_fps,
+                },
+                flush=True,
+            )
         logger.info(f"Utterance manually finalized: tokens={self.final_tokens}, sentence='{self.final_sentence}'")
 
         # Reset active utterance buffer & FSM to IDLE for next continuous sentence
@@ -227,6 +293,8 @@ class ContinuousRecognitionSession:
             recent_frames=len(self.recent_window),
             endpoint_reason=self.endpoint_reason,
             final_sentence=self.final_sentence,
+            translation_status=self.language_service.last_status,
+            translation_error=self.language_service.last_error,
         )
         return ContinuousRecognitionMessage(
             type="continuous_recognition",
@@ -245,6 +313,16 @@ class ContinuousRecognitionSession:
 
     def reset(self):
         """Resets all session state, buffers, and FSM."""
+        if self.session_final_tokens or self._eval_has_written:
+            self._record_eval_event(
+                {
+                    "event": "reset",
+                    "ts": time.time(),
+                    "completed_final_tokens": list(self.session_final_tokens),
+                    "completed_final_sentence": self.final_sentence,
+                },
+                flush=True,
+            )
         self._epoch += 1
         if self._live_infer_task and not self._live_infer_task.done():
             self._live_infer_task.cancel()
@@ -256,6 +334,7 @@ class ContinuousRecognitionSession:
         self.fsm.reset()
         self.live_tokens = []
         self.stable_tokens = []
+        self.session_final_tokens = []
         self.final_tokens = []
         self.final_sentence = ""
         self.last_raw_tokens = []
@@ -263,6 +342,8 @@ class ContinuousRecognitionSession:
         self.last_blank_ratio = 1.0
         self.token_history_window.clear()
         self.endpoint_reason = None
+        self.language_service.last_status = "rule_based"
+        self.language_service.last_error = None
         self.last_forward_ms = 0.0
         self.last_decode_ms = 0.0
 
@@ -393,8 +474,7 @@ class ContinuousRecognitionSession:
             self.live_tokens = []
             self.stable_tokens = []
             self.token_history_window.clear()
-            self.final_tokens = []
-            self.final_sentence = ""
+            self.final_tokens = list(self.session_final_tokens)
             self.endpoint_reason = None
 
         elif current_state in [FSMState.STARTING, FSMState.SIGNING, FSMState.POSSIBLE_END]:
@@ -426,6 +506,9 @@ class ContinuousRecognitionSession:
         # 6. Final Utterance Commitment (uses trimmed active utterance — drops excess POSSIBLE_END silence)
         if is_final_commit:
             self.endpoint_reason = "silence_timeout_reached"
+            fsm_wait_ms = round(max(0.0, (now - self.fsm.last_motion_time) * 1000.0), 2)
+            commit_forward_ms = 0.0
+            commit_decode_ms = 0.0
             seq_np = self._get_trimmed_utterance_array()
             if seq_np is not None:
                 (
@@ -435,18 +518,66 @@ class ContinuousRecognitionSession:
                 ) = await loop.run_in_executor(_inference_executor, self._infer_and_decode_sync, seq_np)
                 self.last_forward_ms = forward_ms
                 self.last_decode_ms = decode_ms
+                commit_forward_ms = forward_ms
+                commit_decode_ms = decode_ms
                 self.last_raw_tokens = list(raw_tokens)
                 self.last_collapsed_tokens = list(collapsed_tokens)
                 self.last_blank_ratio = blank_ratio
-                self.final_tokens = list(gloss_sequence) if len(gloss_sequence) > 0 else list(self.live_tokens)
+                new_tokens = list(gloss_sequence) if len(gloss_sequence) > 0 else list(self.live_tokens)
             else:
-                self.final_tokens = list(self.live_tokens)
+                new_tokens = list(self.live_tokens)
 
-            # Optional natural language translation
-            self.final_sentence = await self.language_service.to_natural_sentence(self.final_tokens)
-            logger.info(f"Utterance finalized: tokens={self.final_tokens}, sentence='{self.final_sentence}'")
+            if new_tokens:
+                self.session_final_tokens.extend(new_tokens)
+                self.final_tokens = list(self.session_final_tokens)
+
+                # Translate the full accumulated gloss sequence into one cohesive Vietnamese sentence
+                t_llm = time.perf_counter()
+                self.final_sentence = await self.language_service.to_natural_sentence(self.final_tokens)
+                llm_ms = round((time.perf_counter() - t_llm) * 1000.0, 2)
+                model_total_ms = round(commit_forward_ms + commit_decode_ms, 2)
+                e2e_ms = round(fsm_wait_ms + model_total_ms + llm_ms, 2)
+
+                self._record_eval_event(
+                    {
+                        "event": "commit",
+                        "ts": now,
+                        "endpoint_reason": self.endpoint_reason,
+                        "new_tokens": new_tokens,
+                        "final_tokens": list(self.final_tokens),
+                        "final_sentence": self.final_sentence,
+                        "translation_status": self.language_service.last_status,
+                        "translation_error": self.language_service.last_error,
+                        "llm_model": self.language_service.model_name,
+                        "utterance_frames": len(self.utterance_buffer),
+                        "fsm_wait_ms": fsm_wait_ms,
+                        "forward_ms": round(commit_forward_ms, 2),
+                        "decode_ms": round(commit_decode_ms, 2),
+                        "model_total_ms": model_total_ms,
+                        "llm_ms": llm_ms,
+                        "e2e_from_sign_end_ms": e2e_ms,
+                        "fps": self._current_fps,
+                    },
+                    flush=True,
+                )
+                logger.info(f"Utterance finalized: tokens={self.final_tokens}, sentence='{self.final_sentence}'")
+            else:
+                self.final_tokens = list(self.session_final_tokens)
 
         total_ms = (time.perf_counter() - t_start) * 1000.0
+
+        # Sample frame-level latency & FPS telemetry (every 3rd frame once warmed up)
+        if self.frame_count >= 5 and (self.frame_count % 3 == 0):
+            self._record_eval_event(
+                {
+                    "event": "frame",
+                    "ts": now,
+                    "fps": fps,
+                    "mediapipe_ms": round(self.last_mediapipe_ms, 2),
+                    "preprocessing_ms": round(self.last_preprocessing_ms, 2),
+                    "fsm_state": current_state.value,
+                }
+            )
 
         # Structured diagnostic logging to file if configured
         if self.debug_log_path:
@@ -508,6 +639,8 @@ class ContinuousRecognitionSession:
             recent_frames=len(self.recent_window),
             endpoint_reason=self.endpoint_reason,
             final_sentence=self.final_sentence,
+            translation_status=self.language_service.last_status,
+            translation_error=self.language_service.last_error,
         )
 
         message = ContinuousRecognitionMessage(
@@ -528,6 +661,7 @@ class ContinuousRecognitionSession:
         return message, annotated_frame
 
     def close(self):
+        self._flush_eval_log()
         self._epoch += 1
         if self._live_infer_task and not self._live_infer_task.done():
             self._live_infer_task.cancel()

@@ -91,6 +91,8 @@ export interface ContinuousStatePayload {
   recent_frames: number;
   endpoint_reason?: string | null;
   final_sentence: string;
+  translation_status?: string;
+  translation_error?: string | null;
 }
 
 export interface IsolatedRecognitionMessage {

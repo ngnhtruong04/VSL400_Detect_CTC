@@ -6,11 +6,32 @@ from typing import Any, Dict
 import yaml
 
 
+def _load_local_dotenv(project_root: Path) -> None:
+    """Loads key=value pairs from local .env files into os.environ (without overwriting existing env vars)."""
+    for env_path in (project_root / ".env", project_root / "backend" / ".env"):
+        if not env_path.is_file():
+            continue
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+        except Exception:
+            pass
+
+
 class Settings:
     def __init__(self):
         # Base paths
         # backend/app/config/settings.py -> backend/app/config -> backend/app -> backend -> VSL_System
         self.PROJECT_ROOT = Path(os.getenv("VSL_PROJECT_ROOT", str(Path(__file__).resolve().parent.parent.parent.parent))).resolve()
+        _load_local_dotenv(self.PROJECT_ROOT)
         self.ASSET_ROOT = Path(os.getenv("VSL_ASSET_ROOT", str(self.PROJECT_ROOT / "VSL400_System_Assets"))).resolve()
 
         # Load runtime.yaml
@@ -90,10 +111,17 @@ class Settings:
 
         # LLM
         llm_cfg = self.raw_config.get("llm", {})
-        self.LLM_ENABLED = bool(llm_cfg.get("enabled", False))
-        self.LLM_PROVIDER = os.getenv("VSL_LLM_PROVIDER", llm_cfg.get("provider", "none"))
         self.LLM_API_KEY = os.getenv("GEMINI_API_KEY", llm_cfg.get("api_key", ""))
-        self.LLM_MODEL = os.getenv("VSL_LLM_MODEL", llm_cfg.get("model_name", "gemini-2.5-flash"))
+        cfg_provider = os.getenv("VSL_LLM_PROVIDER", llm_cfg.get("provider", "none"))
+        cfg_enabled = bool(llm_cfg.get("enabled", False))
+        # Auto-enable Gemini if GEMINI_API_KEY is provided via .env / environment and no other provider was forced
+        if self.LLM_API_KEY and cfg_provider in ("none", "", "gemini"):
+            self.LLM_ENABLED = True
+            self.LLM_PROVIDER = "gemini"
+        else:
+            self.LLM_ENABLED = cfg_enabled
+            self.LLM_PROVIDER = cfg_provider
+        self.LLM_MODEL = os.getenv("VSL_LLM_MODEL", llm_cfg.get("model_name", "gemini-3.5-flash-lite"))
         self.LLM_ENDPOINT = os.getenv("VSL_LLM_ENDPOINT", llm_cfg.get("endpoint_url", ""))
 
         # Server

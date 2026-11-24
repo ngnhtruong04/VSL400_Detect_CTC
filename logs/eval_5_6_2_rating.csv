@@ -1,0 +1,51 @@
+﻿id,len,gold_gloss,reference_sentence,gold_gemini_out,gold_chrf,noisy_gloss,noisy_gemini_out,noisy_chrf,R1_gold_adequacy_1_5,R1_gold_fluency_1_5,R1_gold_halluc_0_1,R2_gold_adequacy_1_5,R2_gold_fluency_1_5,R2_gold_halluc_0_1,R1_noisy_adequacy_1_5,R1_noisy_fluency_1_5,R1_noisy_halluc_0_1,R2_noisy_adequacy_1_5,R2_noisy_fluency_1_5,R2_noisy_halluc_0_1
+1,1,Bố,Bố.,Bố.,100.0,Bố,Bố.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+2,1,Chụp hình,Chụp hình.,Chụp hình,86.23,Chụp hình,Chụp hình,86.23,5,4,0,5,5,0,5,4,0,5,5,0
+3,1,Giúp đỡ,Giúp đỡ.,Giúp đỡ,77.28,Giúp đỡ,Giúp đỡ,77.28,5,4,0,5,5,0,5,4,0,5,5,0
+4,1,Cảm ơn,Cảm ơn.,Cảm ơn.,100.0,Cảm ơn,Cảm ơn.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+5,1,Xin lỗi,Xin lỗi.,Xin lỗi.,100.0,Xin lỗi,Xin lỗi.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+6,1,Bệnh viện,Bệnh viện.,Bệnh viện,86.23,Bệnh viện,Bệnh viện,86.23,5,4,0,5,5,0,5,4,0,5,5,0
+7,1,Ô tô,Ô tô.,Ô tô,68.64,Ô tô,Ô tô,68.64,5,4,0,5,5,0,5,4,0,5,5,0
+8,1,Ấm,Ấm.,Trời ấm.,68.64,Chật,Chật,0.0,4,5,1,5,5,0,1,4,0,1,4,0
+9,1,Mưa,Trời mưa.,Trời mưa.,100.0,Gió,Gió,4.76,5,5,0,5,5,0,1,4,0,1,4,0
+10,1,Ngủ,Ngủ.,Ngủ.,100.0,Nghỉ ngơi,Nghỉ ngơi.,21.25,5,5,0,5,5,0,3,5,0,3,5,0
+11,2,Bố -> Chụp hình,Bố chụp hình.,Bố chụp hình.,100.0,Bố -> Chụp hình,Bố chụp hình.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+12,2,Bố -> Giúp đỡ,Bố giúp đỡ.,Bố giúp đỡ.,100.0,Bố -> Giúp đỡ,Bố giúp đỡ.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+13,2,Giúp đỡ -> Chụp hình,Giúp đỡ chụp hình.,Giúp đỡ chụp hình,93.37,Giúp đỡ -> Chụp hình,Giúp đỡ chụp hình,93.37,5,4,0,5,4,0,5,4,0,5,4,0
+14,2,Anh -> Đọc,Anh đang đọc.,Anh đọc sách.,26.58,Anh -> Đọc,Anh đọc sách.,26.58,4,5,1,4,5,1,4,5,1,4,5,1
+15,2,Mẹ -> Ngủ,Mẹ đang ngủ.,Mẹ đang ngủ.,100.0,Mẹ -> Ngủ,Mẹ đang ngủ.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+16,2,Chợ -> Đi,Đi chợ.,Tôi đi chợ.,81.65,Chợ -> Đi,Tôi đi chợ.,81.65,4,5,1,4,5,1,4,5,1,4,5,1
+17,2,Phở -> Ăn,Ăn phở.,Tôi ăn phở.,81.65,Bún -> Ăn,Ăn bún.,11.67,4,5,1,4,5,1,2,5,0,2,5,0
+18,2,Cà phê -> Uống,Uống cà phê.,Uống cà phê.,100.0,Trà -> Uống,Uống trà.,23.14,5,5,0,5,5,0,2,5,0,2,5,0
+19,2,Học sinh -> Học,Học sinh học bài.,Học sinh học.,69.25,Sinh viên -> Học,Sinh viên học.,23.53,4,4,0,4,4,0,3,4,0,3,4,0
+20,2,Bác sĩ -> Khám bệnh,Bác sĩ khám bệnh.,Bác sĩ khám bệnh.,100.0,Bác sĩ,Bác sĩ.,24.25,5,5,0,5,5,0,2,4,0,2,5,0
+21,3,Bố -> Giúp đỡ -> Chụp hình,Bố giúp đỡ chụp hình.,Bố giúp đỡ chụp hình.,100.0,Bóng chuyền,Chơi bóng chuyền,8.2,5,5,0,5,5,0,1,4,1,1,5,1
+22,3,Bố -> Chụp hình -> Giúp đỡ,Bố chụp hình và giúp đỡ.,Bố giúp đỡ chụp hình.,57.88,Bố,Bố.,8.58,4,5,0,4,5,0,1,5,0,2,5,0
+23,3,Bố -> Chú -> Giúp đỡ,Bố giúp đỡ chú.,Bố giúp đỡ chú.,100.0,Bố -> Chú -> Giúp đỡ,Bố giúp đỡ chú.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+24,3,Mẹ -> Phở -> Nấu,Mẹ nấu phở.,Mẹ nấu phở.,100.0,Mẹ -> Phở -> Nấu,Mẹ nấu phở.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+25,3,Bố -> Chợ -> Đi,Bố đi chợ.,Bố đi chợ.,100.0,Bố -> Chợ -> Đi,Bố đi chợ.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+26,3,Anh -> Sách -> Đọc,Anh đọc sách.,Anh đọc sách.,100.0,Anh -> Vở -> Đọc,Anh đọc vở.,42.04,5,5,0,5,5,0,3,5,0,3,5,0
+27,3,Chị -> Cà phê -> Uống,Chị uống cà phê.,Chị uống cà phê.,100.0,Em -> Cà phê -> Uống,Em uống cà phê.,72.03,5,5,0,5,5,0,3,5,0,4,5,0
+28,3,Chú -> Công ty -> Làm việc,Chú làm việc ở công ty.,Chú làm việc ở công ty.,100.0,Chú -> Làm việc,Chú làm việc.,53.49,5,5,0,5,5,0,3,5,0,3,5,0
+29,3,Em -> Bóng đá -> Thích,Em thích bóng đá.,Em thích đá bóng.,55.49,Em -> Bóng rổ -> Thích,Em thích chơi bóng rổ.,48.59,5,5,0,5,5,0,3,5,1,3,5,0
+30,3,Bác sĩ -> Bệnh viện -> Làm việc,Bác sĩ làm việc ở bệnh viện.,Bác sĩ làm việc ở bệnh viện.,100.0,Y tá -> Bệnh viện -> Làm việc,Y tá làm việc ở bệnh viện.,76.49,5,5,0,5,5,0,3,5,0,4,5,0
+31,4,Buổi sáng -> Bố -> Chú -> Giúp đỡ,Buổi sáng bố giúp đỡ chú.,Buổi sáng bố giúp đỡ chú.,100.0,Buổi sáng -> Bố -> Chú -> Giúp đỡ,Buổi sáng bố giúp đỡ chú.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+32,4,Mẹ -> Chợ -> Đi -> Mua bán,Mẹ đi chợ mua bán.,Mẹ đi chợ mua bán.,100.0,Mẹ -> Chợ -> Đi -> Mua bán,Mẹ đi chợ mua bán.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+33,4,Chú -> Bệnh viện -> Đi -> Khám bệnh,Chú đi khám bệnh ở bệnh viện.,Chú đi bệnh viện khám bệnh.,65.56,Chú -> Bệnh viện -> Đi -> Khám bệnh,Chú đi bệnh viện khám bệnh.,65.56,5,4,0,5,5,0,5,4,0,5,5,0
+34,4,Buổi tối -> Anh -> Sách -> Đọc,Buổi tối anh đọc sách.,Buổi tối anh đọc sách.,100.0,Buổi chiều -> Anh -> Sách -> Đọc,Buổi chiều anh đọc sách.,63.43,5,5,0,5,5,0,4,5,0,4,5,0
+35,4,Chủ nhật -> Bố -> Công viên -> Đi,Chủ nhật bố đi công viên.,Chủ nhật bố đi công viên.,100.0,Thứ bảy -> Bố -> Công viên -> Đi,Thứ bảy bố đi công viên.,61.99,5,5,0,5,5,0,4,5,0,4,5,0
+36,4,Mẹ -> Nhà -> Phở -> Nấu,Mẹ nấu phở ở nhà.,Mẹ nấu phở ở nhà.,100.0,Mẹ -> Nhà -> Nấu,Mẹ nấu ăn ở nhà.,44.17,5,5,0,5,5,0,3,5,0,4,5,0
+37,4,Sinh viên -> Trường Đại học -> Đi -> Học,Sinh viên đi học ở trường đại học.,Sinh viên đi học ở trường đại học.,100.0,Sinh viên -> Trường học -> Đi -> Học,Sinh viên đi học ở trường học.,79.66,5,5,0,5,5,0,4,5,0,4,5,0
+38,4,Buổi trưa -> Chị -> Nhà hàng -> Ăn,Buổi trưa chị ăn ở nhà hàng.,Buổi trưa chị ăn ở nhà hàng.,100.0,Buổi trưa -> Nhà hàng -> Ăn,Buổi trưa ăn ở nhà hàng.,73.03,5,5,0,5,5,0,3,5,0,4,5,0
+39,4,Bố -> Xe máy -> Công ty -> Đi,Bố đi xe máy đến công ty.,Bố đi xe máy đến công ty.,100.0,Bố -> Xe đạp -> Công ty -> Đi,Bố đi xe đạp đến công ty.,65.21,5,5,0,5,5,0,4,5,0,4,5,0
+40,4,Em -> Buổi tối -> Nhà -> Làm bài tập,Buổi tối em làm bài tập ở nhà.,Buổi tối em làm bài tập ở nhà.,100.0,Em -> Buổi tối -> Làm bài tập -> Đọc,Em buổi tối làm bài tập và đọc sách.,54.41,5,5,0,5,5,0,3,3,1,3,4,1
+41,5,Buổi sáng -> Mẹ -> Chợ -> Mua bán -> Cà phê,Buổi sáng mẹ đi chợ mua cà phê.,Buổi sáng mẹ đi chợ mua cà phê.,100.0,Buổi sáng -> Mẹ -> Chợ -> Mua bán -> Cà phê,Buổi sáng mẹ đi chợ mua cà phê.,100.0,5,5,0,5,5,0,5,5,0,5,5,0
+42,5,Chủ nhật -> Bố -> Chú -> Công viên -> Chơi cờ,Chủ nhật bố và chú chơi cờ ở công viên.,Chủ nhật bố và chú đi công viên chơi cờ.,73.69,Chủ nhật -> Bố -> Chú -> Công viên -> Chơi cờ,Chủ nhật bố và chú đi công viên chơi cờ.,73.69,5,5,0,5,5,0,5,5,0,5,5,0
+43,5,Buổi tối -> Bố -> Mẹ -> Nhà -> Ăn,Buổi tối bố mẹ ăn ở nhà.,Buổi tối bố mẹ ăn cơm ở nhà.,79.38,Buổi tối -> Bố -> Nhà -> Ăn,Buổi tối bố ăn cơm ở nhà.,59.32,4,5,1,5,5,1,3,5,1,4,5,1
+44,5,Thứ hai -> Anh -> Xe buýt -> Trường học -> Đi,Thứ hai anh đi xe buýt đến trường học.,Thứ hai anh đi xe buýt đến trường học.,100.0,Thứ ba -> Anh -> Xe buýt -> Trường học -> Đi,Thứ ba anh đi xe buýt đến trường học.,82.66,5,5,0,5,5,0,4,5,0,4,5,0
+45,5,Buổi chiều -> Chị -> Siêu thị -> Đi -> Mua bán,Buổi chiều chị đi siêu thị mua bán.,Buổi chiều chị đi siêu thị mua sắm.,84.84,Buổi chiều -> Chị -> Chợ -> Mua bán,Buổi chiều chị đi chợ mua bán.,64.74,5,5,0,5,5,0,4,5,0,4,5,0
+46,5,Mùa hè -> Anh -> Chị -> Bơi lội -> Thích,Mùa hè anh và chị thích bơi lội.,Anh chị thích bơi lội vào mùa hè.,67.64,Mùa xuân -> Anh -> Chị -> Bơi lội,Mùa xuân anh chị bơi lội.,33.3,5,5,0,5,5,0,3,5,0,3,5,0
+47,5,Buổi sáng -> Chú -> Quán cà phê -> Cà phê -> Uống,Buổi sáng chú uống cà phê ở quán cà phê.,Buổi sáng chú uống cà phê ở quán cà phê.,100.0,Buổi sáng -> Quán cà phê -> Trà -> Uống,Buổi sáng uống trà ở quán cà phê.,56.64,5,5,0,5,5,0,3,5,0,3,5,0
+48,5,Thứ bảy -> Em -> Nhà sách -> Sách -> Đọc,Thứ bảy em đọc sách ở nhà sách.,Thứ bảy em đi nhà sách đọc sách.,73.08,Thứ bảy -> Em -> Nhà sách -> Vở -> Viết,Thứ bảy em đi nhà sách mua vở và bút viết.,48.08,5,5,0,5,5,0,2,5,1,2,5,1
+49,5,Buổi tối -> Mẹ -> Bố -> Giúp đỡ -> Rửa chén,Buổi tối mẹ giúp đỡ bố rửa chén.,Buổi tối mẹ giúp bố rửa chén.,80.73,Buổi tối -> Mẹ -> Giúp đỡ -> Giặt đồ,Buổi tối mẹ giúp đỡ giặt đồ.,57.5,5,5,0,5,5,0,2,5,0,3,5,0
+50,5,Tết Âm lịch -> Ông nội -> Bà nội -> Nhà -> Bánh chưng,Tết Âm lịch ông nội và bà nội ở nhà có bánh chưng.,Tết Âm lịch ông nội bà nội ở nhà gói bánh chưng.,74.98,Tết Âm lịch -> Ông ngoại -> Nhà -> Bánh tét,Ông ngoại làm bánh tét ở nhà trong dịp Tết Âm lịch.,33.91,4,5,1,4,5,1,2,5,1,2,5,1

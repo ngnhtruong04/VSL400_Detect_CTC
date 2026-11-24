@@ -94,7 +94,7 @@ class HandsTCNTransformerCTC(nn.Module):
         transformer_layers: int = 4,
         ff_dim: int = 768,
         num_classes: int = 401,
-        dropout: float = 0.1,
+        dropout: float = 0.2,
         blank_bias_init: float = -1.5,
     ):
         super().__init__()

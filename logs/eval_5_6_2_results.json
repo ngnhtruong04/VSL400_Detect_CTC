@@ -1,0 +1,1208 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "temperature": 0.2,
+  "num_sequences": 50,
+  "total_gold_glosses": 150,
+  "group2_input_wer_pct": 26.67,
+  "group2_input_sdi": {
+    "S": 26,
+    "D": 14,
+    "I": 0
+  },
+  "gemini_success": {
+    "gold": 50,
+    "noisy": 50
+  },
+  "corpus_chrf_gold": 88.38,
+  "corpus_chrf_noisy": 62.29,
+  "mean_sentence_chrf_gold": 89.06,
+  "mean_sentence_chrf_noisy": 63.11,
+  "items": [
+    {
+      "id": 1,
+      "length": 1,
+      "source": "webcam",
+      "gold_gloss": [
+        "Bố"
+      ],
+      "noisy_gloss": [
+        "Bố"
+      ],
+      "reference_sentence": "Bố.",
+      "gold_out": "Bố.",
+      "gold_status": "gemini",
+      "gold_ms": 1853.6,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1853.6,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 2,
+      "length": 1,
+      "source": "webcam",
+      "gold_gloss": [
+        "Chụp hình"
+      ],
+      "noisy_gloss": [
+        "Chụp hình"
+      ],
+      "reference_sentence": "Chụp hình.",
+      "gold_out": "Chụp hình",
+      "gold_status": "gemini",
+      "gold_ms": 1505.8,
+      "gold_chrf": 86.23,
+      "noisy_out": "Chụp hình",
+      "noisy_status": "gemini",
+      "noisy_ms": 1505.8,
+      "noisy_chrf": 86.23
+    },
+    {
+      "id": 3,
+      "length": 1,
+      "source": "webcam",
+      "gold_gloss": [
+        "Giúp đỡ"
+      ],
+      "noisy_gloss": [
+        "Giúp đỡ"
+      ],
+      "reference_sentence": "Giúp đỡ.",
+      "gold_out": "Giúp đỡ",
+      "gold_status": "gemini",
+      "gold_ms": 2798.5,
+      "gold_chrf": 77.28,
+      "noisy_out": "Giúp đỡ",
+      "noisy_status": "gemini",
+      "noisy_ms": 2798.5,
+      "noisy_chrf": 77.28
+    },
+    {
+      "id": 4,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Cảm ơn"
+      ],
+      "noisy_gloss": [
+        "Cảm ơn"
+      ],
+      "reference_sentence": "Cảm ơn.",
+      "gold_out": "Cảm ơn.",
+      "gold_status": "gemini",
+      "gold_ms": 1762.1,
+      "gold_chrf": 100.0,
+      "noisy_out": "Cảm ơn.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1762.1,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 5,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Xin lỗi"
+      ],
+      "noisy_gloss": [
+        "Xin lỗi"
+      ],
+      "reference_sentence": "Xin lỗi.",
+      "gold_out": "Xin lỗi.",
+      "gold_status": "gemini",
+      "gold_ms": 1633.0,
+      "gold_chrf": 100.0,
+      "noisy_out": "Xin lỗi.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1633.0,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 6,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Bệnh viện"
+      ],
+      "noisy_gloss": [
+        "Bệnh viện"
+      ],
+      "reference_sentence": "Bệnh viện.",
+      "gold_out": "Bệnh viện",
+      "gold_status": "gemini",
+      "gold_ms": 1136.4,
+      "gold_chrf": 86.23,
+      "noisy_out": "Bệnh viện",
+      "noisy_status": "gemini",
+      "noisy_ms": 1136.4,
+      "noisy_chrf": 86.23
+    },
+    {
+      "id": 7,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Ô tô"
+      ],
+      "noisy_gloss": [
+        "Ô tô"
+      ],
+      "reference_sentence": "Ô tô.",
+      "gold_out": "Ô tô",
+      "gold_status": "gemini",
+      "gold_ms": 1537.8,
+      "gold_chrf": 68.64,
+      "noisy_out": "Ô tô",
+      "noisy_status": "gemini",
+      "noisy_ms": 1537.8,
+      "noisy_chrf": 68.64
+    },
+    {
+      "id": 8,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Ấm"
+      ],
+      "noisy_gloss": [
+        "Chật"
+      ],
+      "reference_sentence": "Ấm.",
+      "gold_out": "Trời ấm.",
+      "gold_status": "gemini",
+      "gold_ms": 2196.4,
+      "gold_chrf": 68.64,
+      "noisy_out": "Chật",
+      "noisy_status": "gemini",
+      "noisy_ms": 2202.2,
+      "noisy_chrf": 0.0
+    },
+    {
+      "id": 9,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Mưa"
+      ],
+      "noisy_gloss": [
+        "Gió"
+      ],
+      "reference_sentence": "Trời mưa.",
+      "gold_out": "Trời mưa.",
+      "gold_status": "gemini",
+      "gold_ms": 1247.7,
+      "gold_chrf": 100.0,
+      "noisy_out": "Gió",
+      "noisy_status": "gemini",
+      "noisy_ms": 1196.4,
+      "noisy_chrf": 4.76
+    },
+    {
+      "id": 10,
+      "length": 1,
+      "source": "sim",
+      "gold_gloss": [
+        "Ngủ"
+      ],
+      "noisy_gloss": [
+        "Nghỉ ngơi"
+      ],
+      "reference_sentence": "Ngủ.",
+      "gold_out": "Ngủ.",
+      "gold_status": "gemini",
+      "gold_ms": 1225.5,
+      "gold_chrf": 100.0,
+      "noisy_out": "Nghỉ ngơi.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1087.2,
+      "noisy_chrf": 21.25
+    },
+    {
+      "id": 11,
+      "length": 2,
+      "source": "webcam",
+      "gold_gloss": [
+        "Bố",
+        "Chụp hình"
+      ],
+      "noisy_gloss": [
+        "Bố",
+        "Chụp hình"
+      ],
+      "reference_sentence": "Bố chụp hình.",
+      "gold_out": "Bố chụp hình.",
+      "gold_status": "gemini",
+      "gold_ms": 2243.5,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố chụp hình.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2243.5,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 12,
+      "length": 2,
+      "source": "webcam",
+      "gold_gloss": [
+        "Bố",
+        "Giúp đỡ"
+      ],
+      "noisy_gloss": [
+        "Bố",
+        "Giúp đỡ"
+      ],
+      "reference_sentence": "Bố giúp đỡ.",
+      "gold_out": "Bố giúp đỡ.",
+      "gold_status": "gemini",
+      "gold_ms": 1328.2,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố giúp đỡ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1328.2,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 13,
+      "length": 2,
+      "source": "webcam",
+      "gold_gloss": [
+        "Giúp đỡ",
+        "Chụp hình"
+      ],
+      "noisy_gloss": [
+        "Giúp đỡ",
+        "Chụp hình"
+      ],
+      "reference_sentence": "Giúp đỡ chụp hình.",
+      "gold_out": "Giúp đỡ chụp hình",
+      "gold_status": "gemini",
+      "gold_ms": 1516.4,
+      "gold_chrf": 93.37,
+      "noisy_out": "Giúp đỡ chụp hình",
+      "noisy_status": "gemini",
+      "noisy_ms": 1516.4,
+      "noisy_chrf": 93.37
+    },
+    {
+      "id": 14,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Anh",
+        "Đọc"
+      ],
+      "noisy_gloss": [
+        "Anh",
+        "Đọc"
+      ],
+      "reference_sentence": "Anh đang đọc.",
+      "gold_out": "Anh đọc sách.",
+      "gold_status": "gemini",
+      "gold_ms": 2234.2,
+      "gold_chrf": 26.58,
+      "noisy_out": "Anh đọc sách.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2234.2,
+      "noisy_chrf": 26.58
+    },
+    {
+      "id": 15,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Mẹ",
+        "Ngủ"
+      ],
+      "noisy_gloss": [
+        "Mẹ",
+        "Ngủ"
+      ],
+      "reference_sentence": "Mẹ đang ngủ.",
+      "gold_out": "Mẹ đang ngủ.",
+      "gold_status": "gemini",
+      "gold_ms": 1457.5,
+      "gold_chrf": 100.0,
+      "noisy_out": "Mẹ đang ngủ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1457.5,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 16,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Chợ",
+        "Đi"
+      ],
+      "noisy_gloss": [
+        "Chợ",
+        "Đi"
+      ],
+      "reference_sentence": "Đi chợ.",
+      "gold_out": "Tôi đi chợ.",
+      "gold_status": "gemini",
+      "gold_ms": 1660.3,
+      "gold_chrf": 81.65,
+      "noisy_out": "Tôi đi chợ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1660.3,
+      "noisy_chrf": 81.65
+    },
+    {
+      "id": 17,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Phở",
+        "Ăn"
+      ],
+      "noisy_gloss": [
+        "Bún",
+        "Ăn"
+      ],
+      "reference_sentence": "Ăn phở.",
+      "gold_out": "Tôi ăn phở.",
+      "gold_status": "gemini",
+      "gold_ms": 3926.6,
+      "gold_chrf": 81.65,
+      "noisy_out": "Ăn bún.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1705.3,
+      "noisy_chrf": 11.67
+    },
+    {
+      "id": 18,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Cà phê",
+        "Uống"
+      ],
+      "noisy_gloss": [
+        "Trà",
+        "Uống"
+      ],
+      "reference_sentence": "Uống cà phê.",
+      "gold_out": "Uống cà phê.",
+      "gold_status": "gemini",
+      "gold_ms": 1227.4,
+      "gold_chrf": 100.0,
+      "noisy_out": "Uống trà.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1954.4,
+      "noisy_chrf": 23.14
+    },
+    {
+      "id": 19,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Học sinh",
+        "Học"
+      ],
+      "noisy_gloss": [
+        "Sinh viên",
+        "Học"
+      ],
+      "reference_sentence": "Học sinh học bài.",
+      "gold_out": "Học sinh học.",
+      "gold_status": "gemini",
+      "gold_ms": 1524.8,
+      "gold_chrf": 69.25,
+      "noisy_out": "Sinh viên học.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1596.0,
+      "noisy_chrf": 23.53
+    },
+    {
+      "id": 20,
+      "length": 2,
+      "source": "sim",
+      "gold_gloss": [
+        "Bác sĩ",
+        "Khám bệnh"
+      ],
+      "noisy_gloss": [
+        "Bác sĩ"
+      ],
+      "reference_sentence": "Bác sĩ khám bệnh.",
+      "gold_out": "Bác sĩ khám bệnh.",
+      "gold_status": "gemini",
+      "gold_ms": 1389.0,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bác sĩ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 3636.9,
+      "noisy_chrf": 24.25
+    },
+    {
+      "id": 21,
+      "length": 3,
+      "source": "webcam",
+      "gold_gloss": [
+        "Bố",
+        "Giúp đỡ",
+        "Chụp hình"
+      ],
+      "noisy_gloss": [
+        "Bóng chuyền"
+      ],
+      "reference_sentence": "Bố giúp đỡ chụp hình.",
+      "gold_out": "Bố giúp đỡ chụp hình.",
+      "gold_status": "gemini",
+      "gold_ms": 2018.6,
+      "gold_chrf": 100.0,
+      "noisy_out": "Chơi bóng chuyền",
+      "noisy_status": "gemini",
+      "noisy_ms": 2523.5,
+      "noisy_chrf": 8.2
+    },
+    {
+      "id": 22,
+      "length": 3,
+      "source": "webcam",
+      "gold_gloss": [
+        "Bố",
+        "Chụp hình",
+        "Giúp đỡ"
+      ],
+      "noisy_gloss": [
+        "Bố"
+      ],
+      "reference_sentence": "Bố chụp hình và giúp đỡ.",
+      "gold_out": "Bố giúp đỡ chụp hình.",
+      "gold_status": "gemini",
+      "gold_ms": 3024.6,
+      "gold_chrf": 57.88,
+      "noisy_out": "Bố.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1853.6,
+      "noisy_chrf": 8.58
+    },
+    {
+      "id": 23,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Bố",
+        "Chú",
+        "Giúp đỡ"
+      ],
+      "noisy_gloss": [
+        "Bố",
+        "Chú",
+        "Giúp đỡ"
+      ],
+      "reference_sentence": "Bố giúp đỡ chú.",
+      "gold_out": "Bố giúp đỡ chú.",
+      "gold_status": "gemini",
+      "gold_ms": 2542.8,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố giúp đỡ chú.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2542.8,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 24,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Mẹ",
+        "Phở",
+        "Nấu"
+      ],
+      "noisy_gloss": [
+        "Mẹ",
+        "Phở",
+        "Nấu"
+      ],
+      "reference_sentence": "Mẹ nấu phở.",
+      "gold_out": "Mẹ nấu phở.",
+      "gold_status": "gemini",
+      "gold_ms": 2283.6,
+      "gold_chrf": 100.0,
+      "noisy_out": "Mẹ nấu phở.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2283.6,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 25,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Bố",
+        "Chợ",
+        "Đi"
+      ],
+      "noisy_gloss": [
+        "Bố",
+        "Chợ",
+        "Đi"
+      ],
+      "reference_sentence": "Bố đi chợ.",
+      "gold_out": "Bố đi chợ.",
+      "gold_status": "gemini",
+      "gold_ms": 2722.1,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố đi chợ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2722.1,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 26,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Anh",
+        "Sách",
+        "Đọc"
+      ],
+      "noisy_gloss": [
+        "Anh",
+        "Vở",
+        "Đọc"
+      ],
+      "reference_sentence": "Anh đọc sách.",
+      "gold_out": "Anh đọc sách.",
+      "gold_status": "gemini",
+      "gold_ms": 2868.4,
+      "gold_chrf": 100.0,
+      "noisy_out": "Anh đọc vở.",
+      "noisy_status": "gemini",
+      "noisy_ms": 9941.5,
+      "noisy_chrf": 42.04
+    },
+    {
+      "id": 27,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Chị",
+        "Cà phê",
+        "Uống"
+      ],
+      "noisy_gloss": [
+        "Em",
+        "Cà phê",
+        "Uống"
+      ],
+      "reference_sentence": "Chị uống cà phê.",
+      "gold_out": "Chị uống cà phê.",
+      "gold_status": "gemini",
+      "gold_ms": 2945.9,
+      "gold_chrf": 100.0,
+      "noisy_out": "Em uống cà phê.",
+      "noisy_status": "gemini",
+      "noisy_ms": 12673.0,
+      "noisy_chrf": 72.03
+    },
+    {
+      "id": 28,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Chú",
+        "Công ty",
+        "Làm việc"
+      ],
+      "noisy_gloss": [
+        "Chú",
+        "Làm việc"
+      ],
+      "reference_sentence": "Chú làm việc ở công ty.",
+      "gold_out": "Chú làm việc ở công ty.",
+      "gold_status": "gemini",
+      "gold_ms": 1226.1,
+      "gold_chrf": 100.0,
+      "noisy_out": "Chú làm việc.",
+      "noisy_status": "gemini",
+      "noisy_ms": 11824.3,
+      "noisy_chrf": 53.49
+    },
+    {
+      "id": 29,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Em",
+        "Bóng đá",
+        "Thích"
+      ],
+      "noisy_gloss": [
+        "Em",
+        "Bóng rổ",
+        "Thích"
+      ],
+      "reference_sentence": "Em thích bóng đá.",
+      "gold_out": "Em thích đá bóng.",
+      "gold_status": "gemini",
+      "gold_ms": 14377.6,
+      "gold_chrf": 55.49,
+      "noisy_out": "Em thích chơi bóng rổ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 6940.3,
+      "noisy_chrf": 48.59
+    },
+    {
+      "id": 30,
+      "length": 3,
+      "source": "sim",
+      "gold_gloss": [
+        "Bác sĩ",
+        "Bệnh viện",
+        "Làm việc"
+      ],
+      "noisy_gloss": [
+        "Y tá",
+        "Bệnh viện",
+        "Làm việc"
+      ],
+      "reference_sentence": "Bác sĩ làm việc ở bệnh viện.",
+      "gold_out": "Bác sĩ làm việc ở bệnh viện.",
+      "gold_status": "gemini",
+      "gold_ms": 14526.9,
+      "gold_chrf": 100.0,
+      "noisy_out": "Y tá làm việc ở bệnh viện.",
+      "noisy_status": "gemini",
+      "noisy_ms": 977.1,
+      "noisy_chrf": 76.49
+    },
+    {
+      "id": 31,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi sáng",
+        "Bố",
+        "Chú",
+        "Giúp đỡ"
+      ],
+      "noisy_gloss": [
+        "Buổi sáng",
+        "Bố",
+        "Chú",
+        "Giúp đỡ"
+      ],
+      "reference_sentence": "Buổi sáng bố giúp đỡ chú.",
+      "gold_out": "Buổi sáng bố giúp đỡ chú.",
+      "gold_status": "gemini",
+      "gold_ms": 1275.3,
+      "gold_chrf": 100.0,
+      "noisy_out": "Buổi sáng bố giúp đỡ chú.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1275.3,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 32,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Mẹ",
+        "Chợ",
+        "Đi",
+        "Mua bán"
+      ],
+      "noisy_gloss": [
+        "Mẹ",
+        "Chợ",
+        "Đi",
+        "Mua bán"
+      ],
+      "reference_sentence": "Mẹ đi chợ mua bán.",
+      "gold_out": "Mẹ đi chợ mua bán.",
+      "gold_status": "gemini",
+      "gold_ms": 4368.1,
+      "gold_chrf": 100.0,
+      "noisy_out": "Mẹ đi chợ mua bán.",
+      "noisy_status": "gemini",
+      "noisy_ms": 4368.1,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 33,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Chú",
+        "Bệnh viện",
+        "Đi",
+        "Khám bệnh"
+      ],
+      "noisy_gloss": [
+        "Chú",
+        "Bệnh viện",
+        "Đi",
+        "Khám bệnh"
+      ],
+      "reference_sentence": "Chú đi khám bệnh ở bệnh viện.",
+      "gold_out": "Chú đi bệnh viện khám bệnh.",
+      "gold_status": "gemini",
+      "gold_ms": 1098.9,
+      "gold_chrf": 65.56,
+      "noisy_out": "Chú đi bệnh viện khám bệnh.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1098.9,
+      "noisy_chrf": 65.56
+    },
+    {
+      "id": 34,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi tối",
+        "Anh",
+        "Sách",
+        "Đọc"
+      ],
+      "noisy_gloss": [
+        "Buổi chiều",
+        "Anh",
+        "Sách",
+        "Đọc"
+      ],
+      "reference_sentence": "Buổi tối anh đọc sách.",
+      "gold_out": "Buổi tối anh đọc sách.",
+      "gold_status": "gemini",
+      "gold_ms": 997.3,
+      "gold_chrf": 100.0,
+      "noisy_out": "Buổi chiều anh đọc sách.",
+      "noisy_status": "gemini",
+      "noisy_ms": 9594.6,
+      "noisy_chrf": 63.43
+    },
+    {
+      "id": 35,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Chủ nhật",
+        "Bố",
+        "Công viên",
+        "Đi"
+      ],
+      "noisy_gloss": [
+        "Thứ bảy",
+        "Bố",
+        "Công viên",
+        "Đi"
+      ],
+      "reference_sentence": "Chủ nhật bố đi công viên.",
+      "gold_out": "Chủ nhật bố đi công viên.",
+      "gold_status": "gemini",
+      "gold_ms": 3062.3,
+      "gold_chrf": 100.0,
+      "noisy_out": "Thứ bảy bố đi công viên.",
+      "noisy_status": "gemini",
+      "noisy_ms": 3640.8,
+      "noisy_chrf": 61.99
+    },
+    {
+      "id": 36,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Mẹ",
+        "Nhà",
+        "Phở",
+        "Nấu"
+      ],
+      "noisy_gloss": [
+        "Mẹ",
+        "Nhà",
+        "Nấu"
+      ],
+      "reference_sentence": "Mẹ nấu phở ở nhà.",
+      "gold_out": "Mẹ nấu phở ở nhà.",
+      "gold_status": "gemini",
+      "gold_ms": 1537.7,
+      "gold_chrf": 100.0,
+      "noisy_out": "Mẹ nấu ăn ở nhà.",
+      "noisy_status": "gemini",
+      "noisy_ms": 16530.2,
+      "noisy_chrf": 44.17
+    },
+    {
+      "id": 37,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Sinh viên",
+        "Trường Đại học",
+        "Đi",
+        "Học"
+      ],
+      "noisy_gloss": [
+        "Sinh viên",
+        "Trường học",
+        "Đi",
+        "Học"
+      ],
+      "reference_sentence": "Sinh viên đi học ở trường đại học.",
+      "gold_out": "Sinh viên đi học ở trường đại học.",
+      "gold_status": "gemini",
+      "gold_ms": 8298.0,
+      "gold_chrf": 100.0,
+      "noisy_out": "Sinh viên đi học ở trường học.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1360.8,
+      "noisy_chrf": 79.66
+    },
+    {
+      "id": 38,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi trưa",
+        "Chị",
+        "Nhà hàng",
+        "Ăn"
+      ],
+      "noisy_gloss": [
+        "Buổi trưa",
+        "Nhà hàng",
+        "Ăn"
+      ],
+      "reference_sentence": "Buổi trưa chị ăn ở nhà hàng.",
+      "gold_out": "Buổi trưa chị ăn ở nhà hàng.",
+      "gold_status": "gemini",
+      "gold_ms": 9274.9,
+      "gold_chrf": 100.0,
+      "noisy_out": "Buổi trưa ăn ở nhà hàng.",
+      "noisy_status": "gemini",
+      "noisy_ms": 9612.2,
+      "noisy_chrf": 73.03
+    },
+    {
+      "id": 39,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Bố",
+        "Xe máy",
+        "Công ty",
+        "Đi"
+      ],
+      "noisy_gloss": [
+        "Bố",
+        "Xe đạp",
+        "Công ty",
+        "Đi"
+      ],
+      "reference_sentence": "Bố đi xe máy đến công ty.",
+      "gold_out": "Bố đi xe máy đến công ty.",
+      "gold_status": "gemini",
+      "gold_ms": 976.8,
+      "gold_chrf": 100.0,
+      "noisy_out": "Bố đi xe đạp đến công ty.",
+      "noisy_status": "gemini",
+      "noisy_ms": 2774.1,
+      "noisy_chrf": 65.21
+    },
+    {
+      "id": 40,
+      "length": 4,
+      "source": "sim",
+      "gold_gloss": [
+        "Em",
+        "Buổi tối",
+        "Nhà",
+        "Làm bài tập"
+      ],
+      "noisy_gloss": [
+        "Em",
+        "Buổi tối",
+        "Làm bài tập",
+        "Đọc"
+      ],
+      "reference_sentence": "Buổi tối em làm bài tập ở nhà.",
+      "gold_out": "Buổi tối em làm bài tập ở nhà.",
+      "gold_status": "gemini",
+      "gold_ms": 1470.7,
+      "gold_chrf": 100.0,
+      "noisy_out": "Em buổi tối làm bài tập và đọc sách.",
+      "noisy_status": "gemini",
+      "noisy_ms": 3472.2,
+      "noisy_chrf": 54.41
+    },
+    {
+      "id": 41,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi sáng",
+        "Mẹ",
+        "Chợ",
+        "Mua bán",
+        "Cà phê"
+      ],
+      "noisy_gloss": [
+        "Buổi sáng",
+        "Mẹ",
+        "Chợ",
+        "Mua bán",
+        "Cà phê"
+      ],
+      "reference_sentence": "Buổi sáng mẹ đi chợ mua cà phê.",
+      "gold_out": "Buổi sáng mẹ đi chợ mua cà phê.",
+      "gold_status": "gemini",
+      "gold_ms": 3474.2,
+      "gold_chrf": 100.0,
+      "noisy_out": "Buổi sáng mẹ đi chợ mua cà phê.",
+      "noisy_status": "gemini",
+      "noisy_ms": 3474.2,
+      "noisy_chrf": 100.0
+    },
+    {
+      "id": 42,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Chủ nhật",
+        "Bố",
+        "Chú",
+        "Công viên",
+        "Chơi cờ"
+      ],
+      "noisy_gloss": [
+        "Chủ nhật",
+        "Bố",
+        "Chú",
+        "Công viên",
+        "Chơi cờ"
+      ],
+      "reference_sentence": "Chủ nhật bố và chú chơi cờ ở công viên.",
+      "gold_out": "Chủ nhật bố và chú đi công viên chơi cờ.",
+      "gold_status": "gemini",
+      "gold_ms": 1006.2,
+      "gold_chrf": 73.69,
+      "noisy_out": "Chủ nhật bố và chú đi công viên chơi cờ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1006.2,
+      "noisy_chrf": 73.69
+    },
+    {
+      "id": 43,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi tối",
+        "Bố",
+        "Mẹ",
+        "Nhà",
+        "Ăn"
+      ],
+      "noisy_gloss": [
+        "Buổi tối",
+        "Bố",
+        "Nhà",
+        "Ăn"
+      ],
+      "reference_sentence": "Buổi tối bố mẹ ăn ở nhà.",
+      "gold_out": "Buổi tối bố mẹ ăn cơm ở nhà.",
+      "gold_status": "gemini",
+      "gold_ms": 1864.6,
+      "gold_chrf": 79.38,
+      "noisy_out": "Buổi tối bố ăn cơm ở nhà.",
+      "noisy_status": "gemini",
+      "noisy_ms": 7090.3,
+      "noisy_chrf": 59.32
+    },
+    {
+      "id": 44,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Thứ hai",
+        "Anh",
+        "Xe buýt",
+        "Trường học",
+        "Đi"
+      ],
+      "noisy_gloss": [
+        "Thứ ba",
+        "Anh",
+        "Xe buýt",
+        "Trường học",
+        "Đi"
+      ],
+      "reference_sentence": "Thứ hai anh đi xe buýt đến trường học.",
+      "gold_out": "Thứ hai anh đi xe buýt đến trường học.",
+      "gold_status": "gemini",
+      "gold_ms": 1789.4,
+      "gold_chrf": 100.0,
+      "noisy_out": "Thứ ba anh đi xe buýt đến trường học.",
+      "noisy_status": "gemini",
+      "noisy_ms": 13030.5,
+      "noisy_chrf": 82.66
+    },
+    {
+      "id": 45,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi chiều",
+        "Chị",
+        "Siêu thị",
+        "Đi",
+        "Mua bán"
+      ],
+      "noisy_gloss": [
+        "Buổi chiều",
+        "Chị",
+        "Chợ",
+        "Mua bán"
+      ],
+      "reference_sentence": "Buổi chiều chị đi siêu thị mua bán.",
+      "gold_out": "Buổi chiều chị đi siêu thị mua sắm.",
+      "gold_status": "gemini",
+      "gold_ms": 859.3,
+      "gold_chrf": 84.84,
+      "noisy_out": "Buổi chiều chị đi chợ mua bán.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1044.5,
+      "noisy_chrf": 64.74
+    },
+    {
+      "id": 46,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Mùa hè",
+        "Anh",
+        "Chị",
+        "Bơi lội",
+        "Thích"
+      ],
+      "noisy_gloss": [
+        "Mùa xuân",
+        "Anh",
+        "Chị",
+        "Bơi lội"
+      ],
+      "reference_sentence": "Mùa hè anh và chị thích bơi lội.",
+      "gold_out": "Anh chị thích bơi lội vào mùa hè.",
+      "gold_status": "gemini",
+      "gold_ms": 1209.9,
+      "gold_chrf": 67.64,
+      "noisy_out": "Mùa xuân anh chị bơi lội.",
+      "noisy_status": "gemini",
+      "noisy_ms": 9450.2,
+      "noisy_chrf": 33.3
+    },
+    {
+      "id": 47,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi sáng",
+        "Chú",
+        "Quán cà phê",
+        "Cà phê",
+        "Uống"
+      ],
+      "noisy_gloss": [
+        "Buổi sáng",
+        "Quán cà phê",
+        "Trà",
+        "Uống"
+      ],
+      "reference_sentence": "Buổi sáng chú uống cà phê ở quán cà phê.",
+      "gold_out": "Buổi sáng chú uống cà phê ở quán cà phê.",
+      "gold_status": "gemini",
+      "gold_ms": 1420.6,
+      "gold_chrf": 100.0,
+      "noisy_out": "Buổi sáng uống trà ở quán cà phê.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1405.3,
+      "noisy_chrf": 56.64
+    },
+    {
+      "id": 48,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Thứ bảy",
+        "Em",
+        "Nhà sách",
+        "Sách",
+        "Đọc"
+      ],
+      "noisy_gloss": [
+        "Thứ bảy",
+        "Em",
+        "Nhà sách",
+        "Vở",
+        "Viết"
+      ],
+      "reference_sentence": "Thứ bảy em đọc sách ở nhà sách.",
+      "gold_out": "Thứ bảy em đi nhà sách đọc sách.",
+      "gold_status": "gemini",
+      "gold_ms": 11614.7,
+      "gold_chrf": 73.08,
+      "noisy_out": "Thứ bảy em đi nhà sách mua vở và bút viết.",
+      "noisy_status": "gemini",
+      "noisy_ms": 4783.4,
+      "noisy_chrf": 48.08
+    },
+    {
+      "id": 49,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Buổi tối",
+        "Mẹ",
+        "Bố",
+        "Giúp đỡ",
+        "Rửa chén"
+      ],
+      "noisy_gloss": [
+        "Buổi tối",
+        "Mẹ",
+        "Giúp đỡ",
+        "Giặt đồ"
+      ],
+      "reference_sentence": "Buổi tối mẹ giúp đỡ bố rửa chén.",
+      "gold_out": "Buổi tối mẹ giúp bố rửa chén.",
+      "gold_status": "gemini",
+      "gold_ms": 1210.4,
+      "gold_chrf": 80.73,
+      "noisy_out": "Buổi tối mẹ giúp đỡ giặt đồ.",
+      "noisy_status": "gemini",
+      "noisy_ms": 9327.1,
+      "noisy_chrf": 57.5
+    },
+    {
+      "id": 50,
+      "length": 5,
+      "source": "sim",
+      "gold_gloss": [
+        "Tết Âm lịch",
+        "Ông nội",
+        "Bà nội",
+        "Nhà",
+        "Bánh chưng"
+      ],
+      "noisy_gloss": [
+        "Tết Âm lịch",
+        "Ông ngoại",
+        "Nhà",
+        "Bánh tét"
+      ],
+      "reference_sentence": "Tết Âm lịch ông nội và bà nội ở nhà có bánh chưng.",
+      "gold_out": "Tết Âm lịch ông nội bà nội ở nhà gói bánh chưng.",
+      "gold_status": "gemini",
+      "gold_ms": 1842.9,
+      "gold_chrf": 74.98,
+      "noisy_out": "Ông ngoại làm bánh tét ở nhà trong dịp Tết Âm lịch.",
+      "noisy_status": "gemini",
+      "noisy_ms": 1413.3,
+      "noisy_chrf": 33.91
+    }
+  ]
+}

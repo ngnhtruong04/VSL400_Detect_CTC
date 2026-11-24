@@ -1,30 +1,28 @@
 import React, { useState } from 'react';
-import { MessageSquare, Copy, Check, Volume2, History } from 'lucide-react';
+import { MessageSquare, Copy, Check, Volume2, History, AlertTriangle } from 'lucide-react';
 import { UtteranceHistoryItem } from '../types';
 
 interface SentenceCardProps {
   sentence: string;
   liveGloss?: string[];
   history?: UtteranceHistoryItem[];
+  translationStatus?: string;
+  translationError?: string | null;
 }
 
 export const SentenceCard: React.FC<SentenceCardProps> = ({
   sentence,
   liveGloss = [],
   history = [],
+  translationStatus = 'rule_based',
+  translationError = null,
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
-  // Full combined transcript across finalized utterances in this session
+  // Authoritative unified natural Vietnamese sentence for the entire accumulated Final Gloss sequence
   const displaySentence = sentence || (liveGloss.length > 0 ? liveGloss.join(' ') + '...' : '');
-  const fullTranscript =
-    history.length > 1
-      ? [...history]
-          .reverse()
-          .map((h) => h.sentence)
-          .join(' ')
-      : sentence;
+  const fullTranscript = sentence;
 
   const handleCopy = async () => {
     const textToCopy = fullTranscript || sentence;
@@ -62,6 +60,27 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
             Tiếng Việt Tự Nhiên
           </h3>
+          {sentence && (
+            <span
+              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                translationStatus === 'gemini'
+                  ? 'bg-sky-50 text-sky-700 border-sky-200'
+                  : translationStatus === 'ollama'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : translationStatus === 'fallback_error'
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}
+            >
+              {translationStatus === 'gemini'
+                ? 'Gemini AI'
+                : translationStatus === 'ollama'
+                ? 'Ollama cục bộ'
+                : translationStatus === 'fallback_error'
+                ? 'Dự phòng (lỗi API)'
+                : 'Quy tắc ngữ pháp'}
+            </span>
+          )}
         </div>
 
         {sentence && (
@@ -95,6 +114,16 @@ export const SentenceCard: React.FC<SentenceCardProps> = ({
           </div>
         )}
       </div>
+
+      {/* Fallback / LLM Connection Warning Banner */}
+      {translationStatus === 'fallback_error' && translationError && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <span>
+            <b>Cảnh báo dịch thuật:</b> {translationError}. Hệ thống đang giữ nguyên chuỗi Gloss cục bộ.
+          </span>
+        </div>
+      )}
 
       {/* Sentence Display Area */}
       <div className="min-h-[72px] p-3.5 rounded-xl bg-gradient-to-br from-emerald-50/50 to-teal-50/30 border border-emerald-100 flex flex-col justify-center space-y-1">

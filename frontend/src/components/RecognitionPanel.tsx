@@ -25,7 +25,9 @@ export const RecognitionPanel: React.FC<RecognitionPanelProps> = ({
   isStreaming = false,
   onCommitUtterance,
 }) => {
-  const canCommit = isStreaming && (liveGloss.length > 0 || (modelDiagnostic?.buffer_frames || 0) >= 15);
+  const canCommit =
+    isStreaming &&
+    (liveGloss.length > 0 || (modelDiagnostic?.buffer_frames || 0) >= 15 || finalGloss.length > 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col space-y-4">
