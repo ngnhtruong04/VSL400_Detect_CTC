@@ -29,6 +29,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     try:
+        import torch
+        if settings.CPU_NUM_THREADS > 0:
+            torch.set_num_threads(settings.CPU_NUM_THREADS)
         model, device = ModelLoader.get_loaded_model()
         logger.info(f"Model successfully loaded into memory on device: {device}")
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

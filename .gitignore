@@ -1,0 +1,12 @@
+# Local testing & diagnostics (device-only)
+audit_diagnostics/
+logs/
+
+# Python virtual environment & caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend build/dev caches
+frontend/node_modules/.vite/

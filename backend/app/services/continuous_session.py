@@ -55,9 +55,9 @@ class ContinuousRecognitionSession:
         session_id: Optional[str] = None,
         decoder: Optional[CTCDecoder] = None,
         language_service: Optional[LanguageService] = None,
-        recent_window_size: int = 90,
-        min_utterance_frames: int = 15,
-        max_utterance_frames: int = 300,
+        recent_window_size: Optional[int] = None,
+        min_utterance_frames: Optional[int] = None,
+        max_utterance_frames: Optional[int] = None,
         inference_stride: Optional[int] = None,
     ):
         self.session_id = session_id or str(uuid.uuid4())
@@ -80,16 +80,30 @@ class ContinuousRecognitionSession:
             possible_end_delay_ms=settings.POSSIBLE_END_DELAY_MS,
             silence_ms=settings.SILENCE_MS,
             cooldown_ms=settings.COOLDOWN_MS,
+            hands_lowered_possible_end_ms=settings.HANDS_LOWERED_POSSIBLE_END_MS,
+            hands_lowered_commit_ms=settings.HANDS_LOWERED_COMMIT_MS,
+            starting_abort_ms=settings.STARTING_ABORT_MS,
         )
         self.language_service = language_service or LanguageService()
         self.model, self.device = ModelLoader.get_loaded_model()
+        if (
+            self.device.type == "cpu"
+            and settings.CPU_NUM_THREADS > 0
+            and torch.get_num_threads() != settings.CPU_NUM_THREADS
+        ):
+            torch.set_num_threads(settings.CPU_NUM_THREADS)
 
-        # Buffer separation
-        self.recent_window: deque = deque(maxlen=recent_window_size)
+        # Buffer separation (synchronized with config/runtime.yaml via settings)
+        eff_recent_window = int(recent_window_size if recent_window_size is not None else settings.BUFFER_MAX_FRAMES)
+        self.recent_window: deque = deque(maxlen=eff_recent_window)
+        self.recent_motion_window: deque = deque(maxlen=eff_recent_window)
+        self.recent_space_window: deque = deque(maxlen=eff_recent_window)
         self.utterance_buffer: List[np.ndarray] = []
+        self.utterance_motion_buffer: List[float] = []
+        self.utterance_space_buffer: List[bool] = []
         self._last_active_buf_len: int = 0
-        self.min_utterance_frames = min_utterance_frames
-        self.max_utterance_frames = max_utterance_frames
+        self.min_utterance_frames = int(min_utterance_frames if min_utterance_frames is not None else settings.BUFFER_MIN_FRAMES)
+        self.max_utterance_frames = int(max_utterance_frames if max_utterance_frames is not None else settings.BUFFER_MAX_UTTERANCE_FRAMES)
         self.inference_stride = int(inference_stride if inference_stride is not None else settings.INFERENCE_STRIDE)
 
         # Predictions & Token stability
@@ -145,8 +159,8 @@ class ContinuousRecognitionSession:
         else:
             self.fsm.possible_end_delay_sec = settings.POSSIBLE_END_DELAY_MS / 1000.0
             self.fsm.silence_sec = settings.SILENCE_MS / 1000.0
-            self.fsm.hands_lowered_possible_end_sec = 0.65
-            self.fsm.hands_lowered_commit_sec = 1.2
+            self.fsm.hands_lowered_possible_end_sec = settings.HANDS_LOWERED_POSSIBLE_END_MS / 1000.0
+            self.fsm.hands_lowered_commit_sec = settings.HANDS_LOWERED_COMMIT_MS / 1000.0
             self.fsm.motion_threshold = settings.MOTION_THRESHOLD
 
     def update_llm_config(self, enabled: Optional[bool] = None, provider: Optional[str] = None):
@@ -157,14 +171,32 @@ class ContinuousRecognitionSession:
             self.language_service.provider = str(provider).lower().strip()
 
     def _get_trimmed_utterance_array(self) -> Optional[np.ndarray]:
-        """Returns active utterance frames with excessive trailing POSSIBLE_END silence trimmed
-        (preserves up to 10 frames / ~0.33s of endpoint hold matching training parity)."""
-        if len(self.utterance_buffer) < self.min_utterance_frames:
+        """Returns active utterance frames trimmed of leading/trailing dead static tails
+        while strictly preserving the complete active span (including internal static holds
+        and inter-sign pauses in multi-gloss / repeated utterances)."""
+        n = len(self.utterance_buffer)
+        if n < self.min_utterance_frames:
             return None
+
+        if len(self.utterance_motion_buffer) == n and len(self.utterance_space_buffer) == n:
+            trim_thresh = min(0.008, float(self.fsm.motion_threshold))
+            active_idx = [i for i, m in enumerate(self.utterance_motion_buffer) if m >= trim_thresh]
+            if len(active_idx) < 3:
+                active_idx = [i for i, sp in enumerate(self.utterance_space_buffer) if sp]
+            if active_idx:
+                start_idx = max(0, active_idx[0] - 8)
+                end_idx = min(n, active_idx[-1] + 1 + 6)
+                if (end_idx - start_idx) < self.min_utterance_frames:
+                    deficit = self.min_utterance_frames - (end_idx - start_idx)
+                    end_idx = min(n, end_idx + deficit)
+                    start_idx = max(0, end_idx - self.min_utterance_frames)
+                return np.stack(self.utterance_buffer[start_idx:end_idx], axis=0).astype(np.float32)
+
+        # Fallback if buffer was populated externally without parallel motion tracking
         if self._last_active_buf_len >= self.min_utterance_frames:
-            end_idx = min(len(self.utterance_buffer), self._last_active_buf_len + 10)
+            end_idx = min(n, self._last_active_buf_len + 10)
         else:
-            end_idx = len(self.utterance_buffer)
+            end_idx = n
         return np.stack(self.utterance_buffer[:end_idx], axis=0).astype(np.float32)
 
     async def commit_utterance_async(self) -> ContinuousRecognitionMessage:
@@ -199,6 +231,8 @@ class ContinuousRecognitionSession:
         self._live_infer_task = None
         buf_len = len(self.utterance_buffer)
         self.utterance_buffer.clear()
+        self.utterance_motion_buffer.clear()
+        self.utterance_space_buffer.clear()
         self._last_active_buf_len = 0
         self.live_tokens = []
         self.stable_tokens = []
@@ -251,7 +285,11 @@ class ContinuousRecognitionSession:
         self._live_infer_task = None
         self.preprocessor.reset_state()
         self.recent_window.clear()
+        self.recent_motion_window.clear()
+        self.recent_space_window.clear()
         self.utterance_buffer.clear()
+        self.utterance_motion_buffer.clear()
+        self.utterance_space_buffer.clear()
         self._last_active_buf_len = 0
         self.fsm.reset()
         self.live_tokens = []
@@ -361,17 +399,22 @@ class ContinuousRecognitionSession:
             right_hand is not None and len(right_hand) == 21
         )
 
-        # 2. Strict Preprocessing
+        # 2. Strict Preprocessing (isotropic aspect-ratio correction for non-square webcams)
         t_prep = time.perf_counter()
+        frame_h, frame_w = frame_bgr.shape[:2]
+        frame_aspect = (frame_h / float(frame_w)) if frame_w > 0 else 1.0
         frame_features, motion_energy = self.preprocessor.process_frame(
             left_hand_lms=left_hand,
             right_hand_lms=right_hand,
             pose_lms=pose,
+            frame_aspect=frame_aspect,
         )
         self.last_preprocessing_ms = (time.perf_counter() - t_prep) * 1000.0
 
         # Append to recent rolling window (for diagnostics & pre-roll)
         self.recent_window.append(frame_features)
+        self.recent_motion_window.append(motion_energy)
+        self.recent_space_window.append(self.preprocessor.in_signing_space)
 
         # 3. Endpoint FSM update
         prev_fsm_state = self.fsm.state
@@ -387,8 +430,13 @@ class ContinuousRecognitionSession:
         # 4. Utterance Buffer Management
         if prev_fsm_state == FSMState.IDLE and current_state == FSMState.STARTING:
             self._epoch += 1
-            pre_roll = list(self.recent_window)[-6:]
+            # 12-frame pre-roll (~0.4-0.48s) preserves gentle sign onset after 5-frame motion filter lag
+            pre_roll = list(self.recent_window)[-12:]
+            pre_roll_m = list(self.recent_motion_window)[-12:]
+            pre_roll_sp = list(self.recent_space_window)[-12:]
             self.utterance_buffer = list(pre_roll)
+            self.utterance_motion_buffer = list(pre_roll_m)
+            self.utterance_space_buffer = list(pre_roll_sp)
             self._last_active_buf_len = len(self.utterance_buffer)
             self.live_tokens = []
             self.stable_tokens = []
@@ -400,12 +448,26 @@ class ContinuousRecognitionSession:
         elif current_state in [FSMState.STARTING, FSMState.SIGNING, FSMState.POSSIBLE_END]:
             if len(self.utterance_buffer) < self.max_utterance_frames:
                 self.utterance_buffer.append(frame_features)
+                self.utterance_motion_buffer.append(motion_energy)
+                self.utterance_space_buffer.append(self.preprocessor.in_signing_space)
             if current_state in [FSMState.STARTING, FSMState.SIGNING]:
                 self._last_active_buf_len = len(self.utterance_buffer)
+            # Safe buffer-cap handling (FIX-09): cleanly finalize utterance at cap rather than silently dropping frames
+            if (
+                current_state in [FSMState.SIGNING, FSMState.POSSIBLE_END]
+                and len(self.utterance_buffer) >= self.max_utterance_frames
+                and not is_final_commit
+            ):
+                is_final_commit = True
+                current_state = FSMState.END_OF_UTTERANCE
+                self.fsm._set_state(FSMState.END_OF_UTTERANCE, now)
+                self.endpoint_reason = "max_buffer_reached"
 
         elif current_state == FSMState.IDLE:
-            if prev_fsm_state == FSMState.COOLDOWN:
+            if prev_fsm_state in [FSMState.COOLDOWN, FSMState.STARTING]:
                 self.utterance_buffer.clear()
+                self.utterance_motion_buffer.clear()
+                self.utterance_space_buffer.clear()
                 self._last_active_buf_len = 0
 
         # 5. Full Active Utterance Inference (Non-Blocking Background Task, trimmed of trailing silence)
@@ -425,7 +487,8 @@ class ContinuousRecognitionSession:
 
         # 6. Final Utterance Commitment (uses trimmed active utterance — drops excess POSSIBLE_END silence)
         if is_final_commit:
-            self.endpoint_reason = "silence_timeout_reached"
+            if self.endpoint_reason != "max_buffer_reached":
+                self.endpoint_reason = "silence_timeout_reached"
             seq_np = self._get_trimmed_utterance_array()
             if seq_np is not None:
                 (

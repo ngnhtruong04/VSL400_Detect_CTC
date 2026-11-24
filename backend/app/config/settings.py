@@ -40,6 +40,7 @@ class Settings:
         # Model configuration
         model_cfg = self.raw_config.get("model", {})
         self.DEVICE_SETTING = os.getenv("VSL_DEVICE", model_cfg.get("device", "auto"))
+        self.CPU_NUM_THREADS = int(model_cfg.get("cpu_num_threads", 2))
         self.INPUT_DIM = int(model_cfg.get("input_dim", 294))
         self.MODEL_DIM = int(model_cfg.get("model_dim", 256))
         self.TCN_LAYERS = int(model_cfg.get("tcn_layers", 4))
@@ -61,11 +62,20 @@ class Settings:
         self.N_JOINTS = int(prep_cfg.get("n_joints", 42))
         self.FEATURES_PER_JOINT = int(prep_cfg.get("features_per_joint", 7))
 
+        # MediaPipe extraction configuration (FIX-07)
+        mp_cfg = self.raw_config.get("mediapipe", {})
+        self.MP_MIN_DETECTION_CONFIDENCE = float(mp_cfg.get("min_detection_confidence", 0.5))
+        self.MP_MIN_TRACKING_CONFIDENCE = float(mp_cfg.get("min_tracking_confidence", 0.5))
+        self.MP_POSE_STRIDE = int(mp_cfg.get("pose_stride", 2))
+        self.MP_ROI_ENABLED = bool(mp_cfg.get("roi_enabled", True))
+        self.MP_ROI_SCALE_MULTIPLIER = float(mp_cfg.get("roi_scale_multiplier", 4.0))
+
         # Sequence Buffer
         buf_cfg = self.raw_config.get("buffer", {})
         self.BUFFER_MAX_FRAMES = int(buf_cfg.get("max_frames", 90))
         self.BUFFER_MIN_FRAMES = int(buf_cfg.get("min_frames", 15))
-        self.INFERENCE_STRIDE = int(buf_cfg.get("inference_stride", 2))
+        self.BUFFER_MAX_UTTERANCE_FRAMES = int(buf_cfg.get("max_utterance_frames", 450))
+        self.INFERENCE_STRIDE = int(buf_cfg.get("inference_stride", 8))
 
         # Endpoint FSM
         fsm_cfg = self.raw_config.get("endpoint", {})
@@ -74,13 +84,17 @@ class Settings:
         self.MIN_SIGN_DURATION_MS = int(fsm_cfg.get("min_sign_duration_ms", 400))
         self.POSSIBLE_END_DELAY_MS = int(fsm_cfg.get("possible_end_delay_ms", 600))
         self.SILENCE_MS = int(fsm_cfg.get("silence_ms", 1200))
-        self.COOLDOWN_MS = int(fsm_cfg.get("cooldown_ms", 500))
+        self.COOLDOWN_MS = int(fsm_cfg.get("cooldown_ms", 200))
+        self.HANDS_LOWERED_POSSIBLE_END_MS = int(fsm_cfg.get("hands_lowered_possible_end_ms", 650))
+        self.HANDS_LOWERED_COMMIT_MS = int(fsm_cfg.get("hands_lowered_commit_ms", 1200))
+        self.STARTING_ABORT_MS = int(fsm_cfg.get("starting_abort_ms", 220))
 
         # Camera & Display
         cam_cfg = self.raw_config.get("camera", {})
-        self.CAMERA_WIDTH = int(cam_cfg.get("width", 1280))
-        self.CAMERA_HEIGHT = int(cam_cfg.get("height", 720))
+        self.CAMERA_WIDTH = int(cam_cfg.get("width", 640))
+        self.CAMERA_HEIGHT = int(cam_cfg.get("height", 480))
         self.TARGET_FPS = int(cam_cfg.get("target_fps", 30))
+        self.CAMERA_JPEG_QUALITY = float(cam_cfg.get("jpeg_quality", 0.80))
         self.MIRROR_PREVIEW = bool(cam_cfg.get("mirror_preview", True))
 
         disp_cfg = self.raw_config.get("display", {})
