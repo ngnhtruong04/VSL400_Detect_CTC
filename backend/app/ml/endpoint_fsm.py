@@ -34,6 +34,7 @@ class EndpointFSM:
         cooldown_ms: int = 500,
         hands_lowered_possible_end_ms: int = 650,
         hands_lowered_commit_ms: int = 1200,
+        starting_abort_ms: int = 220,
     ):
         self.motion_threshold = motion_threshold
         self.min_sign_duration_sec = min_sign_duration_ms / 1000.0
@@ -42,6 +43,7 @@ class EndpointFSM:
         self.cooldown_sec = cooldown_ms / 1000.0
         self.hands_lowered_possible_end_sec = hands_lowered_possible_end_ms / 1000.0
         self.hands_lowered_commit_sec = hands_lowered_commit_ms / 1000.0
+        self.starting_abort_sec = starting_abort_ms / 1000.0
 
         self.state: FSMState = FSMState.IDLE
         self.state_entered_time: float = time.time()
@@ -49,6 +51,8 @@ class EndpointFSM:
         self.last_motion_time: float = time.time()
         self.last_update_time: Optional[float] = None
         self.smoothed_motion: Optional[float] = None
+        self._starting_active_frames: int = 0
+        self._starting_total_frames: int = 0
 
         # Utterance prediction tracking
         self.current_live_gloss: List[str] = []
@@ -62,6 +66,8 @@ class EndpointFSM:
         self.last_motion_time = time.time()
         self.last_update_time = None
         self.smoothed_motion = None
+        self._starting_active_frames = 0
+        self._starting_total_frames = 0
         self.current_live_gloss = []
 
     def _set_state(self, new_state: FSMState, now: float):
@@ -91,16 +97,17 @@ class EndpointFSM:
         if self.smoothed_motion is None:
             self.smoothed_motion = motion_energy
         else:
-            # Fast attack (alpha ~0.6 per 33ms), smooth decay (decay rate ~ 5.0 / sec)
+            # Fast attack (alpha ~0.6 per 33ms), crisp decay (10.0 / sec) to avoid
+            # double-smoothing tail lag on top of VSLPreprocessor's 5-frame motion window
             if motion_energy > self.smoothed_motion:
                 self.smoothed_motion = 0.6 * motion_energy + 0.4 * self.smoothed_motion
             else:
-                decay = math.exp(-dt * 5.0)
+                decay = math.exp(-dt * 10.0)
                 self.smoothed_motion = motion_energy + decay * (self.smoothed_motion - motion_energy)
 
-        # Active motion detection: true if current frame or smoothed motion meets threshold
+        # Active motion detection: use time-aware EMA smoothed_motion to reject single-frame jitter
         is_active_motion = (
-            (motion_energy >= self.motion_threshold)
+            (self.smoothed_motion >= self.motion_threshold)
             and has_hands
             and in_signing_space
         )
@@ -117,15 +124,31 @@ class EndpointFSM:
             if is_active_motion:
                 self.signing_start_time = now
                 self.last_motion_time = now
+                self._starting_active_frames = 1
+                self._starting_total_frames = 1
                 self._set_state(FSMState.STARTING, now)
 
         elif self.state == FSMState.STARTING:
-            if (now - self.signing_start_time) >= self.min_sign_duration_sec:
-                self._set_state(FSMState.SIGNING, now)
-            elif not in_signing_space and (now - self.last_motion_time > 0.6):
+            self._starting_total_frames += 1
+            if is_active_motion:
+                self._starting_active_frames += 1
+
+            time_since_motion = now - self.last_motion_time
+            elapsed_starting = (now - self.signing_start_time) if self.signing_start_time is not None else 0.0
+
+            # Abort false single-frame jitter before min_sign_duration_sec is reached
+            if time_since_motion > self.starting_abort_sec:
+                self._starting_active_frames = 0
+                self._starting_total_frames = 0
                 self._set_state(FSMState.IDLE, now)
-            elif (now - self.last_motion_time) > 1.0:
-                self._set_state(FSMState.IDLE, now)
+            elif elapsed_starting >= self.min_sign_duration_sec:
+                active_ratio = self._starting_active_frames / max(1, self._starting_total_frames)
+                if self._starting_active_frames >= 2 and active_ratio >= 0.40:
+                    self._set_state(FSMState.SIGNING, now)
+                else:
+                    self._starting_active_frames = 0
+                    self._starting_total_frames = 0
+                    self._set_state(FSMState.IDLE, now)
 
         elif self.state == FSMState.SIGNING:
             time_since_motion = now - self.last_motion_time

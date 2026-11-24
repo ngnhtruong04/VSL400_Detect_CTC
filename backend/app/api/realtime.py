@@ -52,6 +52,8 @@ async def _handle_recognition_socket(websocket: WebSocket, mode: str):
     frame_event = asyncio.Event()
     send_lock = asyncio.Lock()
     stop_flag = False
+    received_frames = 0
+    dropped_frames = 0
 
     async def safe_send_json(payload: dict):
         async with send_lock:
@@ -95,7 +97,10 @@ async def _handle_recognition_socket(websocket: WebSocket, mode: str):
                 break
 
             if "bytes" in message and message["bytes"]:
-                # Overwrite slot with newest frame (drops any unconsumed older frame)
+                # Overwrite slot with newest frame (count dropped unconsumed frames for telemetry)
+                received_frames += 1
+                if latest_frame_bytes is not None:
+                    dropped_frames += 1
                 latest_frame_bytes = message["bytes"]
                 frame_event.set()
 
@@ -108,6 +113,9 @@ async def _handle_recognition_socket(websocket: WebSocket, mode: str):
                         b64_str = payload.get("data", "")
                         if "," in b64_str:
                             b64_str = b64_str.split(",", 1)[1]
+                        received_frames += 1
+                        if latest_frame_bytes is not None:
+                            dropped_frames += 1
                         latest_frame_bytes = base64.b64decode(b64_str)
                         frame_event.set()
 
@@ -169,6 +177,12 @@ async def _handle_recognition_socket(websocket: WebSocket, mode: str):
                 await worker_task
             except asyncio.CancelledError:
                 pass
+        if received_frames > 0:
+            drop_pct = (dropped_frames / float(received_frames)) * 100.0
+            logger.info(
+                f"Session {session.session_id} ({mode_clean}) stats: "
+                f"received={received_frames}, dropped={dropped_frames} ({drop_pct:.1f}%)"
+            )
         session.close()
 
 

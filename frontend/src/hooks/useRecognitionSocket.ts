@@ -401,7 +401,7 @@ export function useRecognitionSocket({
           });
       },
       'image/jpeg',
-      0.6
+      0.8
     );
   }, []);
 

@@ -116,8 +116,9 @@ export const App: React.FC = () => {
         const canvas = captureCanvasRef.current;
 
         if (canvas && video.videoWidth > 0 && video.videoHeight > 0) {
-          // 384px width: ~8KB JPEG, <1.5ms encode, 55-80 FPS MediaPipe CPU throughput
-          const targetW = 384;
+          // Cap at 640px width (native 640x480 on 4:3, 640x360 on 16:9) to preserve hand landmark precision
+          // and prevent MediaPipe palm re-detection slowdowns caused by aggressive 384px downscaling.
+          const targetW = Math.min(640, video.videoWidth);
           const targetH = Math.round((targetW * video.videoHeight) / video.videoWidth);
           if (canvas.width !== targetW || canvas.height !== targetH) {
             canvas.width = targetW;

@@ -8,6 +8,7 @@ paths:
 
 model:
   device: "auto"  # 'cuda', 'cpu', or 'auto'
+  cpu_num_threads: 2  # Prevents OpenMP-XNNPACK CPU thread contention during concurrent MediaPipe + PyTorch live inference
   input_dim: 294
   model_dim: 256
   tcn_layers: 4
@@ -20,9 +21,10 @@ model:
   blank_bias_init: -1.5
 
 camera:
-  width: 1280
-  height: 720
+  width: 640
+  height: 480
   target_fps: 30
+  jpeg_quality: 0.80
   mirror_preview: true
 
 preprocessing:
@@ -34,10 +36,18 @@ preprocessing:
   n_joints: 42
   features_per_joint: 7
 
+mediapipe:
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  pose_stride: 2
+  roi_enabled: true
+  roi_scale_multiplier: 4.0
+
 buffer:
   max_frames: 90
   min_frames: 15
-  inference_stride: 4  # Async live inference every 4 frames (~7-8 updates/sec at 30 FPS) without stalling landmarks
+  max_utterance_frames: 450  # Supports full 1-5 gloss continuous utterances (up to ~15-18s) without silent tail drop
+  inference_stride: 8  # Async live inference every 8 frames (~3.75 updates/sec at 30 FPS) eliminating CPU contention
 
 endpoint:
   enabled: true
@@ -45,7 +55,10 @@ endpoint:
   min_sign_duration_ms: 300
   possible_end_delay_ms: 1200
   silence_ms: 2500
-  cooldown_ms: 400
+  cooldown_ms: 200  # Reduced from 400ms (FIX-10) so rapid 3x repeated short signs are not clipped at onset
+  hands_lowered_possible_end_ms: 650
+  hands_lowered_commit_ms: 1200
+  starting_abort_ms: 220
 
 display:
   draw_hands: true
