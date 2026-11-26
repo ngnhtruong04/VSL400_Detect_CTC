@@ -124,6 +124,8 @@ class ContinuousStatePayload(BaseModel):
     recent_frames: int = 0
     endpoint_reason: Optional[str] = None
     final_sentence: str = ""
+    translation_status: str = "rule_based"  # 'rule_based' | 'gemini' | 'ollama' | 'fallback_error'
+    translation_error: Optional[str] = None
 
 
 class ContinuousRecognitionMessage(BaseModel):

@@ -6,11 +6,32 @@ from typing import Any, Dict
 import yaml
 
 
+def _load_local_dotenv(project_root: Path) -> None:
+    """Loads key=value pairs from local .env files into os.environ (without overwriting existing env vars)."""
+    for env_path in (project_root / ".env", project_root / "backend" / ".env"):
+        if not env_path.is_file():
+            continue
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+        except Exception:
+            pass
+
+
 class Settings:
     def __init__(self):
         # Base paths
         # backend/app/config/settings.py -> backend/app/config -> backend/app -> backend -> VSL_System
         self.PROJECT_ROOT = Path(os.getenv("VSL_PROJECT_ROOT", str(Path(__file__).resolve().parent.parent.parent.parent))).resolve()
+        _load_local_dotenv(self.PROJECT_ROOT)
         self.ASSET_ROOT = Path(os.getenv("VSL_ASSET_ROOT", str(self.PROJECT_ROOT / "VSL400_System_Assets"))).resolve()
 
         # Load runtime.yaml
@@ -40,6 +61,7 @@ class Settings:
         # Model configuration
         model_cfg = self.raw_config.get("model", {})
         self.DEVICE_SETTING = os.getenv("VSL_DEVICE", model_cfg.get("device", "auto"))
+        self.CPU_NUM_THREADS = int(model_cfg.get("cpu_num_threads", 2))
         self.INPUT_DIM = int(model_cfg.get("input_dim", 294))
         self.MODEL_DIM = int(model_cfg.get("model_dim", 256))
         self.TCN_LAYERS = int(model_cfg.get("tcn_layers", 4))
@@ -61,11 +83,20 @@ class Settings:
         self.N_JOINTS = int(prep_cfg.get("n_joints", 42))
         self.FEATURES_PER_JOINT = int(prep_cfg.get("features_per_joint", 7))
 
+        # MediaPipe extraction configuration (FIX-07)
+        mp_cfg = self.raw_config.get("mediapipe", {})
+        self.MP_MIN_DETECTION_CONFIDENCE = float(mp_cfg.get("min_detection_confidence", 0.5))
+        self.MP_MIN_TRACKING_CONFIDENCE = float(mp_cfg.get("min_tracking_confidence", 0.5))
+        self.MP_POSE_STRIDE = int(mp_cfg.get("pose_stride", 2))
+        self.MP_ROI_ENABLED = bool(mp_cfg.get("roi_enabled", True))
+        self.MP_ROI_SCALE_MULTIPLIER = float(mp_cfg.get("roi_scale_multiplier", 4.0))
+
         # Sequence Buffer
         buf_cfg = self.raw_config.get("buffer", {})
         self.BUFFER_MAX_FRAMES = int(buf_cfg.get("max_frames", 90))
         self.BUFFER_MIN_FRAMES = int(buf_cfg.get("min_frames", 15))
-        self.INFERENCE_STRIDE = int(buf_cfg.get("inference_stride", 2))
+        self.BUFFER_MAX_UTTERANCE_FRAMES = int(buf_cfg.get("max_utterance_frames", 450))
+        self.INFERENCE_STRIDE = int(buf_cfg.get("inference_stride", 8))
 
         # Endpoint FSM
         fsm_cfg = self.raw_config.get("endpoint", {})
@@ -74,13 +105,17 @@ class Settings:
         self.MIN_SIGN_DURATION_MS = int(fsm_cfg.get("min_sign_duration_ms", 400))
         self.POSSIBLE_END_DELAY_MS = int(fsm_cfg.get("possible_end_delay_ms", 600))
         self.SILENCE_MS = int(fsm_cfg.get("silence_ms", 1200))
-        self.COOLDOWN_MS = int(fsm_cfg.get("cooldown_ms", 500))
+        self.COOLDOWN_MS = int(fsm_cfg.get("cooldown_ms", 200))
+        self.HANDS_LOWERED_POSSIBLE_END_MS = int(fsm_cfg.get("hands_lowered_possible_end_ms", 650))
+        self.HANDS_LOWERED_COMMIT_MS = int(fsm_cfg.get("hands_lowered_commit_ms", 1200))
+        self.STARTING_ABORT_MS = int(fsm_cfg.get("starting_abort_ms", 220))
 
         # Camera & Display
         cam_cfg = self.raw_config.get("camera", {})
-        self.CAMERA_WIDTH = int(cam_cfg.get("width", 1280))
-        self.CAMERA_HEIGHT = int(cam_cfg.get("height", 720))
+        self.CAMERA_WIDTH = int(cam_cfg.get("width", 640))
+        self.CAMERA_HEIGHT = int(cam_cfg.get("height", 480))
         self.TARGET_FPS = int(cam_cfg.get("target_fps", 30))
+        self.CAMERA_JPEG_QUALITY = float(cam_cfg.get("jpeg_quality", 0.80))
         self.MIRROR_PREVIEW = bool(cam_cfg.get("mirror_preview", True))
 
         disp_cfg = self.raw_config.get("display", {})
@@ -90,10 +125,17 @@ class Settings:
 
         # LLM
         llm_cfg = self.raw_config.get("llm", {})
-        self.LLM_ENABLED = bool(llm_cfg.get("enabled", False))
-        self.LLM_PROVIDER = os.getenv("VSL_LLM_PROVIDER", llm_cfg.get("provider", "none"))
         self.LLM_API_KEY = os.getenv("GEMINI_API_KEY", llm_cfg.get("api_key", ""))
-        self.LLM_MODEL = os.getenv("VSL_LLM_MODEL", llm_cfg.get("model_name", "gemini-2.5-flash"))
+        cfg_provider = os.getenv("VSL_LLM_PROVIDER", llm_cfg.get("provider", "none"))
+        cfg_enabled = bool(llm_cfg.get("enabled", False))
+        # Auto-enable Gemini if GEMINI_API_KEY is provided via .env / environment and no other provider was forced
+        if self.LLM_API_KEY and cfg_provider in ("none", "", "gemini"):
+            self.LLM_ENABLED = True
+            self.LLM_PROVIDER = "gemini"
+        else:
+            self.LLM_ENABLED = cfg_enabled
+            self.LLM_PROVIDER = cfg_provider
+        self.LLM_MODEL = os.getenv("VSL_LLM_MODEL", llm_cfg.get("model_name", "gemini-3.5-flash-lite"))
         self.LLM_ENDPOINT = os.getenv("VSL_LLM_ENDPOINT", llm_cfg.get("endpoint_url", ""))
 
         # Server

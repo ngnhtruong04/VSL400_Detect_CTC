@@ -1,0 +1,45 @@
+{
+  "description": "Kịch bản kiểm thử đầu cuối Mục 5.6.1 gồm 8 chuỗi ngắn (độ dài 1 đến 3 gloss) dùng 3 từ: Bố, Chụp hình, Giúp đỡ.",
+  "trials": [
+    {
+      "id": 1,
+      "reference_gloss": ["Bố"],
+      "reference_sentence": "Bố."
+    },
+    {
+      "id": 2,
+      "reference_gloss": ["Chụp hình"],
+      "reference_sentence": "Chụp hình."
+    },
+    {
+      "id": 3,
+      "reference_gloss": ["Giúp đỡ"],
+      "reference_sentence": "Giúp đỡ."
+    },
+    {
+      "id": 4,
+      "reference_gloss": ["Bố", "Chụp hình"],
+      "reference_sentence": "Bố chụp hình."
+    },
+    {
+      "id": 5,
+      "reference_gloss": ["Bố", "Giúp đỡ"],
+      "reference_sentence": "Bố giúp đỡ."
+    },
+    {
+      "id": 6,
+      "reference_gloss": ["Giúp đỡ", "Chụp hình"],
+      "reference_sentence": "Giúp đỡ chụp hình."
+    },
+    {
+      "id": 7,
+      "reference_gloss": ["Bố", "Giúp đỡ", "Chụp hình"],
+      "reference_sentence": "Bố giúp đỡ chụp hình."
+    },
+    {
+      "id": 8,
+      "reference_gloss": ["Bố", "Chụp hình", "Giúp đỡ"],
+      "reference_sentence": "Bố chụp hình và giúp đỡ."
+    }
+  ]
+}

@@ -277,8 +277,201 @@ def test_continuous_reset_clears_state():
     assert len(session.utterance_buffer) == 0
     assert len(session.recent_window) == 0
     assert session.live_tokens == []
+    assert session.session_final_tokens == []
     assert session.final_tokens == []
     assert session.fsm.state == FSMState.IDLE
+
+
+def test_rule_based_sentence_formatting_natural_vietnamese():
+    """Rule-based fallback must reorder VSL S-O-V -> Vietnamese S-V-O and keep natural casing without mid-sentence periods."""
+    import asyncio
+    from backend.app.services.language_service import LanguageService
+
+    svc = LanguageService(enabled=False, provider="none")
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Giúp đỡ", "Bố"])) == "Chú giúp đỡ bố."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Chú", "Giúp đỡ"])) == "Bố giúp đỡ chú."
+    assert asyncio.run(svc.to_natural_sentence(["Buổi sáng", "Bố", "Chú", "Giúp đỡ"])) == "Buổi sáng bố giúp đỡ chú."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Chợ", "Đi"])) == "Bố đi chợ."
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Bệnh viện", "Khám bệnh"])) == "Chú khám bệnh ở bệnh viện."
+    assert asyncio.run(svc.to_natural_sentence(["Mẹ", "Chợ", "Đi", "Mua bán"])) == "Mẹ đi chợ mua bán."
+    assert asyncio.run(svc.to_natural_sentence(["Phở", "Ăn"])) == "Ăn phở."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Ăn"])) == "Bố ăn."
+    assert asyncio.run(svc.to_natural_sentence(["Chú", "Đi", "Việt Nam"])) == "Chú đi Việt Nam."
+    assert asyncio.run(svc.to_natural_sentence(["Bố", "Cao (người)"])) == "Bố cao."
+
+
+def test_continuous_multi_segment_translates_full_accumulated_gloss_sequence():
+    """Signing Chú -> pause -> Giúp đỡ -> pause -> Bố must produce ONE sentence 'Chú giúp đỡ bố.', never 'Chú. Giúp đỡ. Bố.'."""
+    import asyncio
+    from backend.app.services.language_service import LanguageService
+
+    session = ContinuousRecognitionSession(
+        language_service=LanguageService(enabled=False, provider="none")
+    )
+    try:
+        async def run_flow():
+            session.live_tokens = ["Chú"]
+            msg1 = await session.commit_utterance_async()
+            assert msg1.continuous.final_tokens == ["Chú"]
+            assert msg1.continuous.final_sentence == "Chú."
+
+            session.live_tokens = ["Giúp đỡ"]
+            msg2 = await session.commit_utterance_async()
+            assert msg2.continuous.final_tokens == ["Chú", "Giúp đỡ"]
+            assert msg2.continuous.final_sentence == "Chú giúp đỡ."
+
+            session.live_tokens = ["Bố"]
+            msg3 = await session.commit_utterance_async()
+            assert msg3.continuous.final_tokens == ["Chú", "Giúp đỡ", "Bố"]
+            assert msg3.continuous.final_sentence == "Chú giúp đỡ bố."
+
+            msg4 = await session.commit_utterance_async()
+            assert msg4.continuous.final_tokens == ["Chú", "Giúp đỡ", "Bố"]
+            assert msg4.continuous.final_sentence == "Chú giúp đỡ bố."
+
+        asyncio.run(run_flow())
+    finally:
+        session.close()
+
+
+def test_fsm_hands_lowered_commits_fast():
+    """Dropping hands (has_hands=False or in_signing_space=False) must commit within hands_lowered_commit_ms (~350ms)."""
+    fsm = EndpointFSM(
+        motion_threshold=0.008,
+        min_sign_duration_ms=240,
+        possible_end_delay_ms=600,
+        silence_ms=1100,
+        hands_lowered_possible_end_ms=180,
+        hands_lowered_commit_ms=350,
+    )
+    t = 100.0
+    # Active signing for 0.30s -> enters SIGNING
+    for _ in range(7):
+        state, commit = fsm.update(0.03, has_hands=True, blank_ratio=0.3, live_gloss=["Bố"], now=t, in_signing_space=True)
+        t += 0.05
+    assert state == FSMState.SIGNING
+    assert commit is False
+
+    # User drops both hands (has_hands=False, in_signing_space=False) -> commits in <= 0.40s
+    committed_at = None
+    drop_start = t
+    for _ in range(10):
+        state, commit = fsm.update(0.0, has_hands=False, blank_ratio=1.0, live_gloss=["Bố"], now=t, in_signing_space=False)
+        if commit:
+            committed_at = t - drop_start
+            break
+        t += 0.05
+
+    assert committed_at is not None, "Dropping hands must trigger commit promptly"
+    assert committed_at <= 0.45, f"Hands-lowered commit took too long: {committed_at:.2f}s"
+    assert state == FSMState.END_OF_UTTERANCE
+
+
+def test_continuous_prepare_inference_sequence_resamples_short_and_keeps_long():
+    """Short continuous segments (<45f) resample to 45+8=53 preserving missing-hand zeros; long segments stay unstretched."""
+    session = ContinuousRecognitionSession()
+    try:
+        # 1. Short 15-frame single gesture
+        short_seq = np.zeros((15, 42, 7), dtype=np.float32)
+        for t in range(15):
+            short_seq[t, 21:, 0] = -0.2 + 0.02 * t
+            short_seq[t, 21:, 6] = 1.0
+        prep_short = session._prepare_inference_sequence(short_seq.reshape(15, 294))
+        assert prep_short.shape == (53, 294)
+        ps_mat = prep_short.reshape(53, 42, 7)
+        assert np.all(ps_mat[:, :21, :] == 0.0)
+        assert np.all(ps_mat[:5, :, 3:6] == 0.0)
+        assert np.all(ps_mat[-4:, :, 3:6] == 0.0)
+
+        # 2. Long 90-frame multi-gloss sequence -> keeps original 90 frames + 8 edge holds = 98
+        long_seq = np.zeros((90, 294), dtype=np.float32)
+        prep_long = session._prepare_inference_sequence(long_seq)
+        assert prep_long.shape == (98, 294)
+    finally:
+        session.close()
+
+
+def test_continuous_commit_is_non_blocking_while_gemini_translates(monkeypatch):
+    """Dropping hands commits instantly (<0.5s) with fallback sentence while slow Gemini refines asynchronously."""
+    import asyncio
+    import time as real_time
+    import backend.app.services.continuous_session as cont_mod
+    from backend.app.services.language_service import LanguageService
+
+    class _SlowGeminiService(LanguageService):
+        def __init__(self):
+            super().__init__(enabled=True, provider="gemini", api_key="dummy-key")
+            self.release_event = None
+
+        async def to_natural_sentence(self, gloss_list):
+            if self.release_event is not None:
+                await self.release_event.wait()
+            self.last_status = "gemini"
+            self.last_error = None
+            return "Bố giúp đỡ chú ạ."
+
+    slow_svc = _SlowGeminiService()
+    session = ContinuousRecognitionSession(language_service=slow_svc, min_utterance_frames=10)
+    try:
+        pose = [{"x": 0.5, "y": 0.5, "z": 0.0, "visibility": 0.95, "presence": 0.95} for _ in range(33)]
+        pose[11] = {"x": 0.35, "y": 0.4, "z": 0.0, "visibility": 0.95, "presence": 0.95}
+        pose[12] = {"x": 0.65, "y": 0.4, "z": 0.0, "visibility": 0.95, "presence": 0.95}
+        current_lms = [None, None, pose]
+        monkeypatch.setattr(
+            session.extractor,
+            "extract",
+            lambda frame, draw=False: (current_lms[0], current_lms[1], current_lms[2], frame),
+        )
+        # Mock fast deterministic decode returning 3 VSL S-O-V glosses
+        monkeypatch.setattr(
+            session,
+            "_infer_and_decode_sync",
+            lambda seq_np, allow_single_fallback=False: ((["Bố", "Chú", "Giúp đỡ"], [1, 2, 3], [400, 1, 2, 3], 0.25), 5.0, 1.0),
+        )
+        fake_now = [2000.0]
+        monkeypatch.setattr(cont_mod.time, "time", lambda: fake_now[0])
+        dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        async def run_flow():
+            slow_svc.release_event = asyncio.Event()
+            # 1. Active signing (12 frames moving right hand inside signing space)
+            for i in range(12):
+                fake_now[0] += 0.05
+                current_lms[1] = [{"x": 0.42 + 0.015 * i, "y": 0.45, "z": 0.0} for _ in range(21)]
+                await session.process_frame(dummy_frame)
+            assert session.fsm.state == FSMState.SIGNING
+
+            # 2. Drop hands -> must commit in <= 0.45s without blocking on slow Gemini!
+            current_lms[1] = None
+            commit_msg = None
+            t_wall0 = real_time.perf_counter()
+            for _ in range(10):
+                fake_now[0] += 0.05
+                msg, _ = await session.process_frame(dummy_frame)
+                if msg.state == FSMState.END_OF_UTTERANCE.value:
+                    commit_msg = msg
+                    break
+            wall_elapsed = real_time.perf_counter() - t_wall0
+
+            assert commit_msg is not None
+            assert wall_elapsed < 1.0, f"process_frame blocked on slow LLM ({wall_elapsed:.2f}s)!"
+            assert commit_msg.continuous.endpoint_reason == "hands_lowered"
+            assert commit_msg.continuous.final_tokens == ["Bố", "Chú", "Giúp đỡ"]
+            # Instant deterministic S-O-V -> S-V-O fallback sentence shown immediately
+            assert commit_msg.continuous.final_sentence == "Bố giúp đỡ chú."
+            assert commit_msg.continuous.translation_status == "translating"
+
+            # 3. Release background Gemini task -> next frame delivers upgraded Gemini sentence
+            slow_svc.release_event.set()
+            await asyncio.sleep(0.02)
+            fake_now[0] += 0.05
+            after_msg, _ = await session.process_frame(dummy_frame)
+            assert after_msg.continuous.final_sentence == "Bố giúp đỡ chú ạ."
+            assert after_msg.continuous.translation_status == "gemini"
+
+        asyncio.run(run_flow())
+    finally:
+        session.close()
 
 
 def test_sessions_are_isolated():

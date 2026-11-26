@@ -47,6 +47,8 @@ export function useRecognitionSocket({
   const [finalSentence, setFinalSentence] = useState<string>('');
   const [utteranceHistory, setUtteranceHistory] = useState<UtteranceHistoryItem[]>([]);
   const [endpointReason, setEndpointReason] = useState<string | null>(null);
+  const [translationStatus, setTranslationStatus] = useState<string>('rule_based');
+  const [translationError, setTranslationError] = useState<string | null>(null);
   const prevFsmStateRef = useRef<FSMStatus>('IDLE');
   const lastCommitSigRef = useRef<string>('');
 
@@ -243,12 +245,12 @@ export function useRecognitionSocket({
               if (isCommitEvent && msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
                 const committedTokens = msg.continuous.final_tokens;
                 const committedSentence = msg.continuous.final_sentence || committedTokens.join(' ');
-                const sig = `${Math.floor(msg.timestamp * 2)}|${committedTokens.join('|')}`;
+                const sig = `${committedTokens.join('|')}::${committedSentence}`;
+                // Backend holds the authoritative accumulated Final Gloss timeline & unified sentence
+                setFinalGloss(committedTokens);
+                setFinalSentence(committedSentence);
                 if (sig !== lastCommitSigRef.current) {
                   lastCommitSigRef.current = sig;
-                  // Append committed glosses into continuous session timeline (cleared only on Reset)
-                  setFinalGloss((prev) => [...prev, ...committedTokens]);
-                  setFinalSentence(committedSentence);
                   setUtteranceHistory((prev) => [
                     {
                       id: `${Date.now()}-${prev.length}`,
@@ -260,15 +262,31 @@ export function useRecognitionSocket({
                   ]);
                 }
               } else if (msg.continuous.final_tokens && msg.continuous.final_tokens.length > 0) {
-                const fallbackTokens = msg.continuous.final_tokens;
-                setFinalGloss((prev) => (prev.length === 0 ? fallbackTokens : prev));
+                const syncedTokens = msg.continuous.final_tokens;
+                setFinalGloss((prev) => (arraysEqual(prev, syncedTokens) ? prev : syncedTokens));
                 if (msg.continuous.final_sentence) {
-                  const fallbackSent = msg.continuous.final_sentence;
-                  setFinalSentence((prev) => (prev ? prev : fallbackSent));
+                  const syncedSent = msg.continuous.final_sentence;
+                  setFinalSentence((prev) => (prev === syncedSent ? prev : syncedSent));
+                  setUtteranceHistory((prev) => {
+                    if (
+                      prev.length > 0 &&
+                      arraysEqual(prev[0].gloss, syncedTokens) &&
+                      prev[0].sentence !== syncedSent
+                    ) {
+                      return [{ ...prev[0], sentence: syncedSent }, ...prev.slice(1)];
+                    }
+                    return prev;
+                  });
                 }
               }
               const nextReason = msg.continuous.endpoint_reason || null;
               setEndpointReason((prev) => (prev === nextReason ? prev : nextReason));
+              if (msg.continuous.translation_status) {
+                const nextStatus = msg.continuous.translation_status;
+                setTranslationStatus((prev) => (prev === nextStatus ? prev : nextStatus));
+              }
+              const nextErr = msg.continuous.translation_error || null;
+              setTranslationError((prev) => (prev === nextErr ? prev : nextErr));
 
               if (msg.landmarks) {
                 const lmData: LandmarksData = {
@@ -401,7 +419,7 @@ export function useRecognitionSocket({
           });
       },
       'image/jpeg',
-      0.6
+      0.8
     );
   }, []);
 
@@ -474,6 +492,8 @@ export function useRecognitionSocket({
     setIsolatedState('IDLE');
     setIsolatedPrediction(null);
     setEndpointReason(null);
+    setTranslationStatus('rule_based');
+    setTranslationError(null);
   }, []);
 
   return {
@@ -492,6 +512,8 @@ export function useRecognitionSocket({
     finalSentence,
     utteranceHistory,
     endpointReason,
+    translationStatus,
+    translationError,
     commitUtterance,
     // Common telemetry
     rawTokens,

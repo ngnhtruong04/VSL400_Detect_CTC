@@ -52,7 +52,7 @@ class IsolatedRecognitionSession:
         decoder: Optional[CTCDecoder] = None,
         min_frames: int = 10,
         max_frames: int = 180,
-        motion_start_threshold: float = 0.025,
+        motion_start_threshold: float = 0.018,
         motion_continue_threshold: float = 0.008,
         pause_timeout_sec: float = 1.6,
         hands_absent_stop_sec: float = 0.45,
@@ -89,6 +89,8 @@ class IsolatedRecognitionSession:
         # State machine
         self.state: IsolatedState = IsolatedState.IDLE
         self.frames_buffer: List[np.ndarray] = []
+        self.motion_buffer: List[float] = []
+        self.in_space_buffer: List[bool] = []
         self.recording_start_time: Optional[float] = None
         self.last_motion_time: Optional[float] = None
         self.last_prediction: Optional[IsolatedPrediction] = None
@@ -114,6 +116,8 @@ class IsolatedRecognitionSession:
         """Clears buffers and returns to IDLE state."""
         self.state = IsolatedState.IDLE
         self.frames_buffer.clear()
+        self.motion_buffer.clear()
+        self.in_space_buffer.clear()
         self.preprocessor.reset_state()
         self.recording_start_time = None
         self.last_motion_time = None
@@ -131,8 +135,11 @@ class IsolatedRecognitionSession:
         """Manually trigger recording for isolated sign; auto-stops once hands appear and are then lowered out of frame."""
         self.state = IsolatedState.RECORDING
         self.frames_buffer.clear()
+        self.motion_buffer.clear()
+        self.in_space_buffer.clear()
         self.preprocessor.prev_hand_coords = None
         self.preprocessor.prev_hand_valid = None
+        self.preprocessor.reset_motion_state()
         now = time.time()
         self.recording_start_time = now
         self.last_motion_time = now
@@ -150,10 +157,32 @@ class IsolatedRecognitionSession:
             self.state = IsolatedState.INFERRING
 
     def _get_trimmed_segment(self) -> List[np.ndarray]:
-        """Returns recorded frames trimmed up to the last frame containing a detected hand skeleton."""
-        if self.last_hand_buffer_idx > 0:
-            return list(self.frames_buffer[: self.last_hand_buffer_idx])
-        return list(self.frames_buffer)
+        """Returns recorded frames trimmed of leading/trailing dead static tails while
+        strictly preserving the full active signing span (including any internal static holds)."""
+        base_end = self.last_hand_buffer_idx if self.last_hand_buffer_idx > 0 else len(self.frames_buffer)
+        buf = self.frames_buffer[:base_end]
+        n = len(buf)
+        if n < self.min_frames or len(self.motion_buffer) < n or len(self.in_space_buffer) < n:
+            return list(buf)
+
+        motions = self.motion_buffer[:n]
+        spaces = self.in_space_buffer[:n]
+        active_idx = [i for i, m in enumerate(motions) if m >= self.motion_continue_threshold]
+        # Static-posture sign fallback: preserve frames inside signing space if motion is minimal
+        if len(active_idx) < 3:
+            active_idx = [i for i, sp in enumerate(spaces) if sp]
+        if not active_idx:
+            return list(buf)
+
+        # Pad start by 8 frames (compensates 5-frame motion filter lag) and end by 6 frames (endpoint hold).
+        # Everything between active_idx[0] and active_idx[-1] (internal holds) is kept intact.
+        start_idx = max(0, active_idx[0] - 8)
+        end_idx = min(n, active_idx[-1] + 1 + 6)
+        if (end_idx - start_idx) < self.min_frames:
+            deficit = self.min_frames - (end_idx - start_idx)
+            end_idx = min(n, end_idx + deficit)
+            start_idx = max(0, end_idx - self.min_frames)
+        return list(buf[start_idx:end_idx])
 
     def _prepare_inference_sequence(self, segment_features: List[np.ndarray]) -> np.ndarray:
         """Aligns isolated segment length & edge holds to VSL400 training distribution.
@@ -382,12 +411,15 @@ class IsolatedRecognitionSession:
         )
         self.last_mediapipe_ms = (time.perf_counter() - t_mp) * 1000.0
 
-        # 2. Strict Preprocessing
+        # 2. Strict Preprocessing (isotropic aspect-ratio correction for non-square webcams)
         t_prep = time.perf_counter()
+        frame_h, frame_w = frame_bgr.shape[:2]
+        frame_aspect = (frame_h / float(frame_w)) if frame_w > 0 else 1.0
         frame_features, motion_energy = self.preprocessor.process_frame(
             left_hand_lms=left_hand,
             right_hand_lms=right_hand,
             pose_lms=pose,
+            frame_aspect=frame_aspect,
         )
         self.last_preprocessing_ms = (time.perf_counter() - t_prep) * 1000.0
 
@@ -401,6 +433,8 @@ class IsolatedRecognitionSession:
             if has_any_hand and self.preprocessor.in_signing_space and motion_energy >= self.motion_start_threshold:
                 self.state = IsolatedState.RECORDING
                 self.frames_buffer = [frame_features]
+                self.motion_buffer = [motion_energy]
+                self.in_space_buffer = [self.preprocessor.in_signing_space]
                 self.recording_start_time = now
                 self.last_motion_time = now
                 self.last_prediction = None
@@ -415,6 +449,8 @@ class IsolatedRecognitionSession:
                 self.has_seen_hands = True
                 self.hands_lost_time = None
                 self.frames_buffer.append(frame_features)
+                self.motion_buffer.append(motion_energy)
+                self.in_space_buffer.append(self.preprocessor.in_signing_space)
                 self.hand_frames_count += 1
                 self.last_hand_buffer_idx = len(self.frames_buffer)
                 if motion_energy >= self.motion_continue_threshold and self.preprocessor.in_signing_space:
@@ -422,6 +458,8 @@ class IsolatedRecognitionSession:
             elif self.has_seen_hands:
                 # Hands lowered or temporarily lost after signing started
                 self.frames_buffer.append(frame_features)
+                self.motion_buffer.append(motion_energy)
+                self.in_space_buffer.append(self.preprocessor.in_signing_space)
                 if self.hands_lost_time is None:
                     self.hands_lost_time = now
             # If hands have not appeared yet after clicking Start Record, wait without buffering empty frames
@@ -445,6 +483,8 @@ class IsolatedRecognitionSession:
                     else:
                         # Ignore brief accidental hand flash (< min_frames) while moving off mouse; keep waiting
                         self.frames_buffer.clear()
+                        self.motion_buffer.clear()
+                        self.in_space_buffer.clear()
                         self.has_seen_hands = False
                         self.hand_frames_count = 0
                         self.hands_lost_time = None

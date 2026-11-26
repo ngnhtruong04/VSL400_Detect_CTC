@@ -58,6 +58,8 @@ export const App: React.FC = () => {
     finalSentence,
     utteranceHistory,
     endpointReason,
+    translationStatus,
+    translationError,
     commitUtterance,
     rawTokens,
     collapsedTokens,
@@ -74,14 +76,24 @@ export const App: React.FC = () => {
     enabled: isStreaming,
   });
 
-  // Sync sensitivity and LLM settings to backend when connected or changed
+  // Track whether user explicitly changed LLM settings in UI (so initial connect doesn't override backend .env Gemini config)
+  const llmModifiedByUserRef = useRef<boolean>(false);
+
+  // Sync sensitivity and (if user toggled) LLM settings to backend when connected or changed
   useEffect(() => {
     if (isConnected) {
-      sendConfig({
+      const payload: {
+        sensitivity: 'low' | 'medium' | 'high';
+        llm_enabled?: boolean;
+        llm_provider?: 'none' | 'gemini' | 'ollama';
+      } = {
         sensitivity: settings.sensitivity,
-        llm_enabled: settings.llmEnabled,
-        llm_provider: settings.llmProvider,
-      });
+      };
+      if (llmModifiedByUserRef.current) {
+        payload.llm_enabled = settings.llmEnabled;
+        payload.llm_provider = settings.llmProvider;
+      }
+      sendConfig(payload);
     }
   }, [isConnected, settings.sensitivity, settings.llmEnabled, settings.llmProvider, sendConfig]);
 
@@ -116,8 +128,9 @@ export const App: React.FC = () => {
         const canvas = captureCanvasRef.current;
 
         if (canvas && video.videoWidth > 0 && video.videoHeight > 0) {
-          // 384px width: ~8KB JPEG, <1.5ms encode, 55-80 FPS MediaPipe CPU throughput
-          const targetW = 384;
+          // Cap at 640px width (native 640x480 on 4:3, 640x360 on 16:9) to preserve hand landmark precision
+          // and prevent MediaPipe palm re-detection slowdowns caused by aggressive 384px downscaling.
+          const targetW = Math.min(640, video.videoWidth);
           const targetH = Math.round((targetW * video.videoHeight) / video.videoWidth);
           if (canvas.width !== targetW || canvas.height !== targetH) {
             canvas.width = targetW;
@@ -156,6 +169,9 @@ export const App: React.FC = () => {
   };
 
   const handleUpdateSettings = (newSet: Partial<AppSettings>) => {
+    if ('llmEnabled' in newSet || 'llmProvider' in newSet) {
+      llmModifiedByUserRef.current = true;
+    }
     setSettings((prev) => ({ ...prev, ...newSet }));
   };
 
@@ -256,6 +272,8 @@ export const App: React.FC = () => {
                   sentence={finalSentence}
                   liveGloss={liveGloss}
                   history={utteranceHistory}
+                  translationStatus={translationStatus}
+                  translationError={translationError}
                 />
               </>
             )}
